@@ -22,7 +22,7 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout package metadata
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           filter: tree:0
           sparse-checkout-cone-mode: false
@@ -43,7 +43,7 @@ jobs:
 
       - name: Upload static report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: static-compatibility-report
           path: ${{ runner.temp }}/static-report.md
@@ -52,7 +52,7 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout package metadata
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           filter: tree:0
           sparse-checkout-cone-mode: false
@@ -96,7 +96,7 @@ jobs:
 
       - name: Upload OpenWrt report and logs
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: openwrt-main-compatibility-report
           path: |
