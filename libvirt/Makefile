@@ -27,7 +27,7 @@ define Package/libvirt
   SECTION:=libs
   CATEGORY:=Libraries
   TITLE:=libvirt
-  DEPENDS:=+bridge +dmidecode +glib2 +gnutls-utils +libacl +libblkid +libbsd +libcap-ng +libcurl \
+  DEPENDS:=+ip-bridge +dmidecode +glib2 +gnutls-utils +libacl +libblkid +libbsd +libcap-ng +libcurl \
 	+libfuse3 +libgnutls +libjson-c +libnl-core +libparted +libpcap \
 	+libpciaccess +libreadline +libsasl2 +libssh2 +libtirpc +libudev-zero +libxml2 +lvm2
   URL:=https://libvirt.org/

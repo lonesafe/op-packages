@@ -13,6 +13,7 @@ define Package/$(PKG_NAME)
 	CATEGORY:=Network
 	TITLE:=A Lightweight self-hosted netdisk application
 	URL:=https://webd.cf
+	DEPENDS:=@(x86_64||TARGET_ramips||TARGET_bcm47xx||TARGET_ath79||TARGET_bcm63xx||TARGET_ipq40xx||TARGET_ipq806x||TARGET_bcm53xx||TARGET_oxnas||TARGET_kirkwood||TARGET_mvebu||TARGET_rockchip||TARGET_bcm27xx||TARGET_mediatek_filogic)
 endef
 
 TARGET_LIBC:=musl
@@ -84,7 +85,7 @@ ifeq ($(ARCH),aarch64)
   ifeq ($(BOARD),rockchip)
     TARGET_BOARD:=musl.rockchip-armv8
   endif
-  ifeq ($(BOARD),brcm2708)
+  ifeq ($(BOARD),bcm27xx)
     TARGET_BOARD:=musl.brcm2708-bcm2710
   endif
 
@@ -94,10 +95,6 @@ ifeq ($(ARCH),aarch64)
       PKG_VERSION:=$(PKG_VERSION_MEDIATEK_FILO)
     endif
   endif
-endif
-
-ifeq ($(strip $(TARGET_ARCH)$(TARGET_BOARD)),)
-  $(error Unsupported ARCH/BOARD combo: ARCH=$(ARCH) BOARD=$(BOARD) SUBTARGET=$(SUBTARGET))
 endif
 
 PKG_SOURCE:=$(PKG_NAME)-$(PKG_VERSION)-$(TARGET_ARCH)-openwrt-linux-$(TARGET_BOARD).tar.gz

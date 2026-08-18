@@ -1,0 +1,22 @@
+# First symbol reported for each known recursive dependency on OpenWrt main.
+PACKAGE_ip6tables-mod-fullconenat
+PACKAGE_libnetsnmp-ssl
+PACKAGE_luci-app-fchomo
+PACKAGE_luci-app-homeproxy
+PACKAGE_luci-app-momo
+PACKAGE_luci-app-nat6-helper
+PACKAGE_luci-app-neko
+PACKAGE_luci-app-passwall
+PACKAGE_luci-app-passwall2
+PACKAGE_luci-app-ssr-plus
+PACKAGE_lighttpd
+PACKAGE_mihomo-alpha
+PACKAGE_momo
+PACKAGE_natmap
+PACKAGE_php8
+PACKAGE_ppp
+PACKAGE_quectel-cm
+PACKAGE_snmpd-ssl
+PACKAGE_strongswan
+PACKAGE_strongswan-mod-openssl
+PACKAGE_tor
