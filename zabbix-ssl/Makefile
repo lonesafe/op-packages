@@ -33,7 +33,9 @@ define Package/zabbix-ssl/Default
   SUBMENU:=Zabbix
   TITLE:=Zabbix-ssl
   URL:=https://www.zabbix.com/
-  USERID:=zabbix=53:zabbix=53
+  # Let OpenWrt allocate an ID. UID/GID 53 belongs to zabbix-agent in the
+  # official packages feed and a second owner makes package metadata fail.
+  USERID:=zabbix:zabbix
   DEPENDS += $(ICONV_DEPENDS) +libpcre2 +zlib +libopenssl +libmariadbclient
 endef
 

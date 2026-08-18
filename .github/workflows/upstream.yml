@@ -1,11 +1,10 @@
-#
-# This is free software, lisence use MIT.
-# 
-# <https://github.com/kiddin9/op-packages>
-#
+# SPDX-License-Identifier: GPL-2.0-only
+# Based on https://github.com/kiddin9/op-packages
 name: Merge-upstream
 on:
   push:
+    branches:
+      - main
     paths:
       - '.github/workflows/upstream.yml'
       - '.gitignore'
@@ -13,49 +12,48 @@ on:
   schedule:
     - cron: 0 */12 * * *
   workflow_dispatch:
-    inputs:
-      ssh:
-        description: 'ssh'
-        required: false
-        default: 'true'
-  watch:
-    types: started
-  repository_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: merge-upstream-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   merge:
-    if: github.event.repository.owner.id == github.event.sender.id || ! github.event.sender.id || github.event.sender.id == '119362912'
     runs-on: ubuntu-latest
 
     steps:
     - name: Checkout
-      uses: actions/checkout@main
+      uses: actions/checkout@v7
       with:
         fetch-depth: 0
-
-    - uses: de-vri-es/setup-git-credentials@v2
-      with:
-        credentials: https://kiddin9:${{ secrets.TOKEN_KIDDIN9 }}@github.com/
     
     - name: Set git identity
       run : |
-        git config --global user.email "github-actions[bot]@users.noreply.github.com"
-        git config --global user.name "github-actions[bot]"
+        git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+        git config user.name "github-actions[bot]"
         sudo timedatectl set-timezone "Asia/Shanghai"
 
     - name: Syn upstream
       run: |
         shopt -s extglob
         set +e
-        git rm -r --cache * >/dev/null 2>&1 &
-        rm -rf `find ./* -maxdepth 0 -type d ! -name ".github/diy"` >/dev/null 2>&1
+        rm -rf `find ./* -maxdepth 0 -type d ! -name compat ! -name scripts` >/dev/null 2>&1
         function git_clone() {
-          git clone --depth 1 $1 $2
-          if [ "$?" != 0 ]; then
-            echo "error on $1"
-            pid="$( ps -q $$ )"
-            kill $pid
+          local url="$1"
+          local destination="${2:-}"
+          if [[ -n "$destination" ]]; then
+            git clone --depth 1 "$url" "$destination"
+          else
+            git clone --depth 1 "$url"
           fi
+          local status=$?
+          if (( status != 0 )); then
+            echo "error on $url" >&2
+          fi
+          return "$status"
         }
         function git_sparse_clone() {
         trap 'rm -rf "$tmpdir"' EXIT
@@ -437,13 +435,9 @@ jobs:
         rm -rf */.github
 
 
-    - name: SSH connection to Actions
-      uses: kiddin9/debugger-action@master
-      if: github.event.inputs.ssh == 'true'
-
     - name: Apply patches
       run: |
-        find ".github/diy/patches" -type f -name '*.patch' -print0 | sort -z | xargs -I % -t -0 -n 1 sh -c "patch -d './' --no-backup-if-mismatch -p1 -F 1 -i '%'" || (curl -k --data chat_id="${{ secrets.TELEGRAM_CHAT_ID }}" --data "text=❌ 软件包更新失败 😂 https://github.com/kiddin9/openwrt-packages/actions" "https://api.telegram.org/bot${{ secrets.TELEGRAM_TOKEN }}/sendMessage";exit 1)
+        find ".github/diy/patches" -type f -name '*.patch' -print0 | sort -z | xargs -I % -t -0 -n 1 sh -c "patch -d './' --no-backup-if-mismatch -p1 -F 1 -i '%'"
 
     - name: Modify
       run: |
@@ -458,7 +452,7 @@ jobs:
         (
         function latest() {
           (curl -gs -H 'Content-Type: application/json' \
-             -H "Authorization: Bearer ${{ secrets.TOKEN_KIDDIN9 }}" \
+             -H "Authorization: Bearer ${{ github.token }}" \
              -X POST -d '{ "query": "query {repository(owner: \"'"$1"'\", name: \"'"$2"'\"){latestRelease{tagName tagCommit{oid}}refs(refPrefix:\"refs/tags/\",last:1,orderBy:{field:TAG_COMMIT_DATE,direction:ASC}){edges{node{name target{oid}}}}defaultBranchRef{target{...on Commit {oid}}}}}"}' https://api.github.com/graphql)
         }
         for pkg in $(ls !(luci-*|nikki|mihomo*|openwrt-einat-ebpf|qBittorrent-Enhanced-Edition|tuic-client|glorytun|dae|daed|shadowsocks-libev|mosdns|spotifyd|miniupnpd|openwrt-Toolkit|libdouble-conversion|wxbase|3proxy|ucode|mergerfs|openwrt-nezhav1|homebox|sub-web|tcptraceroute|frp|openwrt-caddy|mentohust|brlaser|rapidjson|smartdns|hysteria|gecoosac|libcryptopp|naiveproxy|rustdesk-server|shadowsocksr-libev|tuic-server|joker|ps3netsrv|natter|netmaker|openwrt-ympd|subconverter|sms-tool)/Makefile); do
@@ -502,7 +496,6 @@ jobs:
         
         sed -i \
           -e 's?include \.\./\.\./\(lang\|devel\)?include $(TOPDIR)/feeds/packages/\1?' \
-          -e "s/\(\(^\| \|	\)\(PKG_HASH\|PKG_MD5SUM\|PKG_MIRROR_HASH\|HASH\):=\).*/\1skip/" \
           -e 's?include .*/luci.mk?include $(TOPDIR)/feeds/luci/luci.mk?' \
           -e 's/+libpcre\( \|$\)/+libpcre2 /' \
           */Makefile
@@ -510,7 +503,7 @@ jobs:
         sed -i "s/192.168.0.1/10.0.0.1/g" luci-app-onekeyap/{htdocs/luci-static/resources/view/network/onekeyap.js,root/usr/libexec/onekeyap,root/etc/config/onekeyap}
         sed -i "s/2026.6.1/3026.6.1/g" luci-app-passwall/luasrc/model/cbi/passwall/client/type/ray.lua
         sed -i "s/2026.6.1/3026.6.1/g" luci-app-passwall2/luasrc/model/cbi/passwall2/client/type/ray.lua
-        chmod +x github/diy/*.sh
+        chmod +x .github/diy/*.sh
         bash .github/diy/create_acl_for_luci.sh -a >/dev/null 2>&1 || true
         bash .github/diy/convert_translation.sh -a >/dev/null 2>&1 || true
         bash .github/diy/create_ucitrack_for_luci.sh -a >/dev/null 2>&1 || true
@@ -528,7 +521,7 @@ jobs:
         sed -i 's/icon!=="baby"/icon!==""/' luci-app-quickstart/htdocs/luci-static/quickstart/index.js
         sed -i 's/+php8-cgi /+php8-cgi +php8-fpm /' luci-theme-spectra/Makefile 
 
-        while [[ ! -f /tmp/ok || ! -f /tmp/ok2 || ! -f /tmp/ok3 ]]; do
+        while [[ ! -f /tmp/ok || ! -f /tmp/ok2 ]]; do
             echo "wait"
           sleep 1
         done
@@ -537,6 +530,10 @@ jobs:
       run: |
         Emoji=("🎉" "🤞" "✨" "🎁" "🎈" "🎄" "🎨" "💋" "🍓" "🍕" "🍉" "💐" "🌴" "🚀" "🛸" "🗽" "⛅" "🌈" "🔥" "⛄" "🐶" "🏅" "🦄" "🐤")
         git add .
+        if git diff --cached --quiet; then
+          echo "No upstream changes"
+          exit 0
+        fi
         git commit -m "${Emoji[$[$RANDOM % ${#Emoji[@]}]]} Sync $(date +%Y-%m-%d" "%H:%M:%S)"
         for pkg in $(git diff-tree --no-commit-id --name-only HEAD | grep -v "naiveproxy" | grep -v "luci-app-store" | grep -v "luci-app-quickstart"); do
           if [ "$(grep "PKG_RELEASE" $pkg/Makefile)" ]; then
@@ -546,11 +543,4 @@ jobs:
         git reset --soft HEAD^
         git add .
         git commit -m "${Emoji[$[$RANDOM % ${#Emoji[@]}]]} Sync $(date +%Y-%m-%d" "%H:%M:%S)"
-        git push -f
-
-    - name: Delete workflow runs
-      uses: Mattraks/delete-workflow-runs@main
-      continue-on-error: true
-      with:
-        retain_days: 1
-        keep_minimum_runs: 3
+        git push origin HEAD:main

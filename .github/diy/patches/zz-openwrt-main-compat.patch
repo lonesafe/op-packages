@@ -1,0 +1,109 @@
+diff --git a/brlaser/Makefile b/brlaser/Makefile
+index 36c083b..629e252 100644
+--- a/brlaser/Makefile
++++ b/brlaser/Makefile
+@@ -12 +12 @@ PKG_NAME:=brlaser
+-PKG_VERSION:=v3
++PKG_VERSION:=3
+diff --git a/libvirt/Makefile b/libvirt/Makefile
+index 6d2bcec..89691b9 100644
+--- a/libvirt/Makefile
++++ b/libvirt/Makefile
+@@ -30 +30 @@ define Package/libvirt
+-  DEPENDS:=+bridge +dmidecode +glib2 +gnutls-utils +libacl +libblkid +libbsd +libcap-ng +libcurl \
++  DEPENDS:=+ip-bridge +dmidecode +glib2 +gnutls-utils +libacl +libblkid +libbsd +libcap-ng +libcurl \
+diff --git a/luci-app-nat6-helper/Makefile b/luci-app-nat6-helper/Makefile
+index ea69301..499511d 100644
+--- a/luci-app-nat6-helper/Makefile
++++ b/luci-app-nat6-helper/Makefile
+@@ -4 +4 @@ PKG_NAME:=luci-app-nat6-helper
+-PKG_VERSION:=v1.2
++PKG_VERSION:=1.2
+@@ -16 +15,0 @@ include $(TOPDIR)/feeds/luci/luci.mk
+-
+diff --git a/luci-app-netspeedtest/Makefile b/luci-app-netspeedtest/Makefile
+index 232654c..7958fbc 100644
+--- a/luci-app-netspeedtest/Makefile
++++ b/luci-app-netspeedtest/Makefile
+@@ -16 +16 @@ LUCI_TITLE:=LuCI Support for netspeedtest
+-LUCI_DEPENDS:=+ookla-speedtest +homebox +python3-light +python3-pkg-resources +python3-xml +python3-email \
++LUCI_DEPENDS:=+ookla-speedtest +homebox +python3-light +python3-setuptools +python3-xml \
+diff --git a/luci-app-openclaw/Makefile b/luci-app-openclaw/Makefile
+index 6061cb9..92ca39c 100644
+--- a/luci-app-openclaw/Makefile
++++ b/luci-app-openclaw/Makefile
+@@ -16 +16 @@ LUCI_TITLE:=OpenClaw AI 网关 LuCI 管理插件
+-LUCI_DEPENDS:=+luci-compat +luci-base +curl +openssl-util +script-utils +tar +libstdcpp6
++LUCI_DEPENDS:=+luci-compat +luci-base +curl +openssl-util +script-utils +tar +libstdcpp
+diff --git a/luci-app-public-ip-monitor/Makefile b/luci-app-public-ip-monitor/Makefile
+index cebee4a..836cfd5 100644
+--- a/luci-app-public-ip-monitor/Makefile
++++ b/luci-app-public-ip-monitor/Makefile
+@@ -8 +8 @@ LUCI_DEPENDS:=+luci-base \
+-	+luci-mod-rpc
++	+rpcd-mod-luci
+@@ -14 +14 @@ PKG_MAINTAINER:=Chosen Realm Alfeche <calfeche13>
+-PKG_VERSION:=v1.0.0
++PKG_VERSION:=1.0.0
+diff --git a/luci-app-school/Makefile b/luci-app-school/Makefile
+index 6545046..8690cb1 100644
+--- a/luci-app-school/Makefile
++++ b/luci-app-school/Makefile
+@@ -4 +4 @@ LUCI_TITLE:=Luci for School Bypass
+-LUCI_DEPENDS:=+rkp-ipid +ua2f
++LUCI_DEPENDS:=+kmod-rkp-ipid +ua2f
+@@ -13 +13 @@ include $(TOPDIR)/feeds/luci/luci.mk
+-# call BuildPackage - OpenWrt buildroot signature
+\ No newline at end of file
++# call BuildPackage - OpenWrt buildroot signature
+diff --git a/luci-app-shortcutmenu/Makefile b/luci-app-shortcutmenu/Makefile
+index 8580315..5ee0983 100644
+--- a/luci-app-shortcutmenu/Makefile
++++ b/luci-app-shortcutmenu/Makefile
+@@ -13 +13 @@ LUCI_PKGARCH:=all
+-PKG_VERSION:=v0.0.5
++PKG_VERSION:=0.0.5
+diff --git a/luci-app-xclient/Makefile b/luci-app-xclient/Makefile
+index 2fba749..83f3dce 100644
+--- a/luci-app-xclient/Makefile
++++ b/luci-app-xclient/Makefile
+@@ -4 +4 @@ PKG_NAME:=luci-app-xclient
+-PKG_VERSION:=v2.1
++PKG_VERSION:=2.1
+diff --git a/luci-lib-docker/Makefile b/luci-lib-docker/Makefile
+index 41c1f45..d3fd54f 100644
+--- a/luci-lib-docker/Makefile
++++ b/luci-lib-docker/Makefile
+@@ -4 +4 @@ PKG_NAME:=luci-lib-docker
+-PKG_VERSION:=v0.3.4
++PKG_VERSION:=0.3.4
+diff --git a/mwan3-nft/Makefile b/mwan3-nft/Makefile
+index c899f9c..5608a62 100644
+--- a/mwan3-nft/Makefile
++++ b/mwan3-nft/Makefile
+@@ -17 +17 @@ PKG_CONFIG_DEPENDS:=CONFIG_IPV6
+-PKG_BUILD_DEPENDS:=libnetfilter_conntrack libmnl
++PKG_BUILD_DEPENDS:=libnetfilter-conntrack libmnl
+diff --git a/webd/Makefile b/webd/Makefile
+index fa5cfb8..a042617 100755
+--- a/webd/Makefile
++++ b/webd/Makefile
+@@ -15,0 +16 @@ define Package/$(PKG_NAME)
++	DEPENDS:=@(x86_64||TARGET_ramips||TARGET_bcm47xx||TARGET_ath79||TARGET_bcm63xx||TARGET_ipq40xx||TARGET_ipq806x||TARGET_bcm53xx||TARGET_oxnas||TARGET_kirkwood||TARGET_mvebu||TARGET_rockchip||TARGET_bcm27xx||TARGET_mediatek_filogic)
+@@ -87 +88 @@ ifeq ($(ARCH),aarch64)
+-  ifeq ($(BOARD),brcm2708)
++  ifeq ($(BOARD),bcm27xx)
+@@ -99,4 +99,0 @@ endif
+-ifeq ($(strip $(TARGET_ARCH)$(TARGET_BOARD)),)
+-  $(error Unsupported ARCH/BOARD combo: ARCH=$(ARCH) BOARD=$(BOARD) SUBTARGET=$(SUBTARGET))
+-endif
+-
+diff --git a/zabbix-ssl/Makefile b/zabbix-ssl/Makefile
+index 6bd5183..aeae63d 100644
+--- a/zabbix-ssl/Makefile
++++ b/zabbix-ssl/Makefile
+@@ -36 +36,3 @@ define Package/zabbix-ssl/Default
+-  USERID:=zabbix=53:zabbix=53
++  # Let OpenWrt allocate an ID. UID/GID 53 belongs to zabbix-agent in the
++  # official packages feed and a second owner makes package metadata fail.
++  USERID:=zabbix:zabbix
