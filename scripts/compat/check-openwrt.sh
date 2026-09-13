@@ -19,6 +19,7 @@ feed_log="$log_dir/feed-update.log"
 config_log="$log_dir/defconfig.log"
 actual_missing="$log_dir/missing-dependencies.txt"
 actual_cycles="$log_dir/kconfig-cycles.txt"
+feed_symbols="$log_dir/feed-package-symbols.txt"
 known_missing="$log_dir/known-missing-dependencies.txt"
 known_cycles="$log_dir/known-kconfig-cycles.txt"
 unexpected_missing="$log_dir/unexpected-missing-dependencies.txt"
@@ -36,8 +37,41 @@ grep "^WARNING: Makefile 'package/feeds/$feed_name/" "$config_log" \
 	| sed -E "s#^WARNING: Makefile 'package/feeds/$feed_name/([^/]+)/Makefile'.* dependency on '([^']+)'.*#\1:\2#" \
 	| sort -u >"$actual_missing" || true
 
-sed -n '/error: recursive dependency detected!/{n;s/.*symbol \(PACKAGE_[^ ]*\).*/\1/p;}' \
-	"$config_log" | sort -u >"$actual_cycles"
+{
+	find "$repo_root" -mindepth 2 -maxdepth 2 -type f -name Makefile \
+		-not -path "$repo_root/.git/*" -exec dirname {} \; \
+		| sed "s#^$repo_root/##"
+	while IFS= read -r -d '' makefile; do
+		sed -nE 's/^[[:space:]]*define Package\/([A-Za-z0-9_.+@-]+).*$/\1/p' "$makefile"
+	done < <(
+		find "$repo_root" -type f -name Makefile \
+			-not -path "$repo_root/.git/*" \
+			-not -path "$repo_root/.github/*" -print0
+	)
+} | awk 'NF { print "PACKAGE_" $0 }' | sort -u >"$feed_symbols"
+
+# Kconfig reports every feed in the OpenWrt tree. Keep a cycle only when at
+# least one package supplied by this repository participates in the block.
+awk '
+	NR == FNR { owned[$1] = 1; next }
+	/error: recursive dependency detected!/ {
+		in_cycle = 1
+		first_owned = ""
+		next
+	}
+	in_cycle && /symbol PACKAGE_/ {
+		symbol = $0
+		sub(/^.*symbol /, "", symbol)
+		sub(/[[:space:]].*$/, "", symbol)
+		if (first_owned == "" && owned[symbol])
+			first_owned = symbol
+	}
+	in_cycle && /For a resolution refer to/ {
+		if (first_owned != "")
+			print first_owned
+		in_cycle = 0
+	}
+' "$feed_symbols" "$config_log" | sort -u >"$actual_cycles"
 
 grep -Ev '^[[:space:]]*(#|$)' "$repo_root/compat/known-missing-dependencies.txt" \
 	| sort -u >"$known_missing"
@@ -73,6 +107,7 @@ markdown_list() {
 	echo "- Known Kconfig cycles still present: $cycle_count"
 	echo "- Unexpected missing dependencies: $unexpected_missing_count"
 	echo "- Unexpected Kconfig cycles: $unexpected_cycle_count"
+	echo '- Kconfig cycle scope: cycles involving at least one package from this feed'
 	echo
 	echo '## Unexpected missing dependencies'
 	echo

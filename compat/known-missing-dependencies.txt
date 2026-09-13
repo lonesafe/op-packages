@@ -8,14 +8,11 @@ luci-app-dae:dae-geosite
 luci-app-daed:daed-geoip
 luci-app-daed:daed-geosite
 luci-app-dnscrypt-proxy2:minisign
-luci-app-easymesh:batctl-default
-luci-app-easymesh:kmod-batman-adv
 luci-app-gobinetmodem:kmod-gobinet
 luci-app-hotplug:hotplug
 luci-app-mwan3helper:pdnsd-alt
 luci-app-nft-qos:nft-qos
 luci-app-njitclient:njit8021xclient
-luci-app-nodogsplash:nodogsplash
 luci-app-pppwn:pppwn-cpp
 luci-app-rtp2httpd:rtp2httpd
 luci-app-shairplay:shairplay

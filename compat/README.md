@@ -11,9 +11,9 @@ on 2026-08-18.
 - 14 obsolete dependency names, metadata failures, or APK-invalid versions were fixed.
 - An APK smoke build for `mipsel_24kc` completed successfully with
   `luci-app-public-ip-monitor-1.0.0-r1.apk`.
-- 27 missing third-party dependencies remain tracked in
+- 24 missing third-party dependencies remain tracked in
   `known-missing-dependencies.txt`.
-- 21 Kconfig dependency cycles remain tracked in
+- 19 Kconfig dependency cycles remain tracked in
   `known-kconfig-cycles.txt`.
 - 235 package Makefiles still disable source hash verification. New instances
   are rejected by the static baseline, and existing ones must be removed over
@@ -27,7 +27,9 @@ and target requirements.
 
 `scripts/compat/static-check.sh` prevents increases in known source-level debt.
 `scripts/compat/check-openwrt.sh` regenerates the feed index and OpenWrt Kconfig
-metadata, failing on any issue not recorded in `compat/`.
+metadata, failing on any issue not recorded in `compat/`. Kconfig cycles are
+scoped to dependency blocks containing at least one package supplied by this
+feed, so unrelated cycles in OpenWrt's official feeds are not attributed here.
 
 The CI workflow always tests the latest OpenWrt `main`; a new upstream break is
 therefore visible before the compatibility baseline is updated.
