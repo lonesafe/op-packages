@@ -6,7 +6,9 @@ on 2026-08-18.
 
 ## Current result
 
-- 849 Makefiles were indexed.
+- The latest scheduled snapshot was validated against OpenWrt commit
+  `74ab4c432cd9500fb7a543505e3b0e458fd02c8f` on 2026-09-13.
+- 860 Makefiles were indexed from the exact snapshot eligible for commit.
 - The feed metadata index completes without a package dump error.
 - 14 obsolete dependency names, metadata failures, or APK-invalid versions were fixed.
 - An APK smoke build for `mipsel_24kc` completed successfully with
@@ -15,9 +17,12 @@ on 2026-08-18.
   `known-missing-dependencies.txt`.
 - 19 Kconfig dependency cycles remain tracked in
   `known-kconfig-cycles.txt`.
-- 235 package Makefiles still disable source hash verification. New instances
+- 21 package Makefiles still disable source hash verification. New instances
   are rejected by the static baseline, and existing ones must be removed over
   time.
+- 136 runtime files still mention `opkg`, 53 files reference IPK artifacts,
+  and 213 files use legacy `iptables` commands. These counts are bounded by
+  the static baseline and may only decrease.
 
 A tracked issue is not considered compatible. Until its dependency or Kconfig
 cycle is fixed, install and build that package only after reviewing its source
