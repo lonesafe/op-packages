@@ -1,0 +1,10 @@
+--- a/ndpi-netfilter/Makefile
++++ b/ndpi-netfilter/Makefile
+@@ -68,7 +68,7 @@ define KernelPackage/ipt-ndpi
+   SUBMENU:=Netfilter Extensions
+   TITLE:= nDPI net netfilter module
+-  DEPENDS:=+kmod-nf-conntrack +kmod-nf-conntrack-netlink +kmod-ipt-compat-xtables +libpcap
++  DEPENDS:=+kmod-nf-conntrack +kmod-nf-conntrack-netlink +kmod-ipt-core +libpcap
+   FILES:= $(PKG_BUILD_DIR)/ndpi-netfilter/src/xt_ndpi.ko
+   KCONFIG:=\
+ 	CONFIG_NF_CONNTRACK=y \
