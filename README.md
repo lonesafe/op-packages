@@ -44,6 +44,14 @@ OpenWrt `main` 使用 APK 包管理器。源码 feed 本身不区分 IPK/APK，�
 ./scripts/compat/check-openwrt.sh /path/to/openwrt op_packages
 ```
 
+## 自动更新
+
+GitHub Actions 每 12 小时（北京时间 08:17 和 20:17）执行一次
+[`Update packages`](.github/workflows/upstream.yml)，也可以在 Actions 页面手动运行。
+流程会重新拉取各插件上游、应用仓库内的 OpenWrt `main` 兼容补丁，并在提交前执行
+静态检查和 OpenWrt feed/Kconfig 元数据检查。任一上游拉取或兼容检查失败时，本次更新
+不会写入 `main`，检查报告会作为 Actions artifact 保留 14 天。
+
 ## 维护原则
 
 - 优先使用插件作者和 OpenWrt 官方的最新来源。
