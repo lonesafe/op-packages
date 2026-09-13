@@ -9,16 +9,14 @@
 
 --- a/luci-theme-footstrap/styles/02-tokens.css
 +++ b/luci-theme-footstrap/styles/02-tokens.css
-@@ -416,4 +416,9 @@
- 		 * Binding constraint: apps read a level as `color:` about as often as as `background:`, so
- 		 * every level must clear WCAG AA as text on --fs-bg/--fs-panel/--fs-panel2 and carry a
- 		 * legible --on-*-color as a fill. */
+@@ -419,1 +419,6 @@
+-		--background-color-high: var(--fs-panel);
 +		--card-bg-color: var(--fs-panel) !important;
 +		--border-color: var(--fs-border) !important;
 +		--app-container_title-color: var(--fs-text) !important;
 +		--item-label_key-span-color: var(--app-container_title-color) !important;
 +		--app-container_status-label_block: var(--app-container_title-color) !important;
- 		--background-color-high: var(--fs-panel);
++		--background-color-high: var(--fs-panel);
 diff --git a/luci-theme-footstrap/root/etc/footstrap/pattern.svg b/luci-theme-footstrap/root/etc/footstrap/pattern.svg
 new file mode 100644
 index 000000000..72eb03cdc
