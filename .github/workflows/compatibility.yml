@@ -5,7 +5,6 @@ on:
   push:
     branches:
       - main
-      - 'agent/**'
   schedule:
     - cron: '23 3 * * *'
   workflow_dispatch:
@@ -21,19 +20,8 @@ jobs:
   static:
     runs-on: ubuntu-24.04
     steps:
-      - name: Checkout package metadata
+      - name: Checkout complete package feed
         uses: actions/checkout@v7
-        with:
-          filter: tree:0
-          sparse-checkout-cone-mode: false
-          sparse-checkout: |
-            /*
-            !/*/
-            /.github/
-            /compat/
-            /scripts/
-            /**/Makefile
-            /**/Config.in
 
       - name: Install static-check prerequisites
         run: sudo apt-get update && sudo apt-get install --yes --no-install-recommends ripgrep
@@ -46,7 +34,9 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: static-compatibility-report
-          path: ${{ runner.temp }}/static-report.md
+          path: |
+            ${{ runner.temp }}/static-report.md
+            ${{ runner.temp }}/static-findings/
 
   metadata:
     runs-on: ubuntu-24.04

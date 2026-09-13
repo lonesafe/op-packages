@@ -592,6 +592,7 @@ jobs:
         path: |
           ${{ runner.temp }}/upstream-clone-failures.log
           ${{ runner.temp }}/static-report.md
+          ${{ runner.temp }}/static-findings/
           ${{ runner.temp }}/openwrt-main-report.md
           ${{ runner.temp }}/compatibility-logs/
         if-no-files-found: ignore
