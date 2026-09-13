@@ -26,7 +26,7 @@ function rand_easy_rsa_vars() {
 		-e "s/^[[:space:]]*set_var[[:space:]]\+EASYRSA_REQ_ORG[[:space:]]\+\".*\"$/set_var EASYRSA_REQ_ORG\t\"$KEY_ORG\"/" \
 		-e "s/^[[:space:]]*set_var[[:space:]]\+EASYRSA_REQ_EMAIL[[:space:]]\+\".*\"$/set_var EASYRSA_REQ_EMAIL\t\"$KEY_EMAIL\"/" \
 		-e "s/^[[:space:]]*set_var[[:space:]]\+EASYRSA_REQ_OU[[:space:]]\+\".*\"$/set_var EASYRSA_REQ_OU\t\"$KEY_OU\"/" \
-		/etc/easy-rsa/vars
+		/etc/easy-rsa/vars.openvpn-server
 }
 
 rand_easy_rsa_vars
@@ -35,7 +35,7 @@ rand_easy_rsa_vars
 rm -rf /root/pki
 
 export EASYRSA_PKI="/etc/easy-rsa/pki"
-export EASYRSA_VARS_FILE="/etc/easy-rsa/vars"
+export EASYRSA_VARS_FILE="/etc/easy-rsa/vars.openvpn-server"
 export EASYRSA_CLI="easyrsa --batch"
 
 echo -en "yes\nyes\n" | $EASYRSA_CLI init-pki

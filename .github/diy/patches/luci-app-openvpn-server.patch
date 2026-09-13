@@ -61,6 +61,71 @@
  		var tb = document.getElementById('openvpn_status');
  		if (data && tb) {
 
+--- a/luci-app-openvpn-server/Makefile
++++ b/luci-app-openvpn-server/Makefile
+@@ -10,7 +10,11 @@ LUCI_DEPENDS:=+openvpn-openssl +openvpn-easy-rsa
+ LUCI_PKGARCH:=all
+ PKG_NAME:=luci-app-openvpn-server
+ PKG_VERSION:=2.0
+-PKG_RELEASE:=21
++PKG_RELEASE:=22
++
++define Package/luci-app-openvpn-server/conffiles
++/etc/easy-rsa/vars.openvpn-server
++endef
+ 
+ include $(TOPDIR)/feeds/luci/luci.mk
+ 
+
+--- a/luci-app-openvpn-server/root/etc/easy-rsa/vars
++++ /dev/null
+@@ -1,10 +0,0 @@
+-set_var EASYRSA_OPENSSL	"openssl"
+-set_var EASYRSA_KEY_SIZE	2048
+-set_var EASYRSA_REQ_COUNTRY	"lunatickochiya"
+-set_var EASYRSA_REQ_PROVINCE	"github"
+-set_var EASYRSA_REQ_CITY	"github"
+-set_var EASYRSA_REQ_ORG	"github"
+-set_var EASYRSA_REQ_EMAIL	"lunatickochiya@github.com"
+-set_var EASYRSA_REQ_OU	"github"
+-set_var EASYRSA_CA_EXPIRE	3650
+-set_var EASYRSA_CERT_EXPIRE	3650
+
+--- /dev/null
++++ b/luci-app-openvpn-server/root/etc/easy-rsa/vars.openvpn-server
+@@ -0,0 +1,10 @@
++set_var EASYRSA_OPENSSL	"openssl"
++set_var EASYRSA_KEY_SIZE	2048
++set_var EASYRSA_REQ_COUNTRY	"lunatickochiya"
++set_var EASYRSA_REQ_PROVINCE	"github"
++set_var EASYRSA_REQ_CITY	"github"
++set_var EASYRSA_REQ_ORG	"github"
++set_var EASYRSA_REQ_EMAIL	"lunatickochiya@github.com"
++set_var EASYRSA_REQ_OU	"github"
++set_var EASYRSA_CA_EXPIRE	3650
++set_var EASYRSA_CERT_EXPIRE	3650
+
+--- a/luci-app-openvpn-server/root/etc/openvpncert.sh
++++ b/luci-app-openvpn-server/root/etc/openvpncert.sh
+@@ -26,7 +26,7 @@ function rand_easy_rsa_vars() {
+ 		-e "s/^[[:space:]]*set_var[[:space:]]\+EASYRSA_REQ_ORG[[:space:]]\+\".*\"$/set_var EASYRSA_REQ_ORG\t\"$KEY_ORG\"/" \
+ 		-e "s/^[[:space:]]*set_var[[:space:]]\+EASYRSA_REQ_EMAIL[[:space:]]\+\".*\"$/set_var EASYRSA_REQ_EMAIL\t\"$KEY_EMAIL\"/" \
+ 		-e "s/^[[:space:]]*set_var[[:space:]]\+EASYRSA_REQ_OU[[:space:]]\+\".*\"$/set_var EASYRSA_REQ_OU\t\"$KEY_OU\"/" \
+-		/etc/easy-rsa/vars
++		/etc/easy-rsa/vars.openvpn-server
+ }
+ 
+ rand_easy_rsa_vars
+@@ -35,7 +35,7 @@ rand_easy_rsa_vars
+ rm -rf /root/pki
+ 
+ export EASYRSA_PKI="/etc/easy-rsa/pki"
+-export EASYRSA_VARS_FILE="/etc/easy-rsa/vars"
++export EASYRSA_VARS_FILE="/etc/easy-rsa/vars.openvpn-server"
+ export EASYRSA_CLI="easyrsa --batch"
+ 
+ echo -en "yes\nyes\n" | $EASYRSA_CLI init-pki
+
 --- a/luci-app-openvpn-server-client/root/etc/uci-defaults/openvpn
 +++ b/luci-app-openvpn-server-client/root/etc/uci-defaults/openvpn
 @@ -1,5 +1,7 @@
