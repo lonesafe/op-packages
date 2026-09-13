@@ -23,3 +23,4 @@ luci-app-tencentcloud-cos:vsftpd-alt
 luci-app-xclient:pdnsd-alt
 openwrt-dist-luci:ChinaDNS
 openwrt-dist-luci:dns-forwarder
+wifidog-wiwiz:luci-app-eqos
