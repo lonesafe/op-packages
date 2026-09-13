@@ -10,12 +10,15 @@ LUCI_DEPENDS:=+openvpn-openssl +openvpn-easy-rsa
 LUCI_PKGARCH:=all
 PKG_NAME:=luci-app-openvpn-server
 PKG_VERSION:=2.0
-PKG_RELEASE:=1
+PKG_RELEASE:=2
+
+define Package/luci-app-openvpn-server/conffiles
+/etc/easy-rsa/vars.openvpn-server
+endef
 
 include $(TOPDIR)/feeds/luci/luci.mk
 
 # call BuildPackage - OpenWrt buildroot signature
-
 
 
 
