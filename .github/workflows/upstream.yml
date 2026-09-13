@@ -126,7 +126,7 @@ jobs:
         (
         git_clone https://github.com/Openwrt-Passwall/openwrt-passwall && mvdir openwrt-passwall
         git_clone https://github.com/Openwrt-Passwall/openwrt-passwall-packages && mvdir openwrt-passwall-packages
-        git_clone https://github.com/sbwml/luci-app-mosdns openwrt-mos && mv -n openwrt-mos/{*mosdns,v2dat} ./; rm -rf openwrt-mos
+        git_clone https://github.com/sbwml/luci-app-mosdns openwrt-mos && mv -n openwrt-mos/{*mosdns,geo2txt} ./; rm -rf openwrt-mos
         git_clone https://github.com/Lienol/openwrt-package liep && rm -rf liep/other
         git_clone https://github.com/rufengsuixing/luci-app-autoipsetadder
         git_clone https://github.com/NateLol/luci-app-beardropper
@@ -448,8 +448,11 @@ jobs:
         mv -n luciapp/!(luci-app-noddos|luci-app-filebrowser-go|luci-app-openvpn-server|luci-app-chrony|luci-app-kodexplorer|luci-app-cshark|luci-app-dnscrypt-proxy|luci-app-https-dns-proxy|luci-app-ssr-mudb-server|luci-app-ledtrig-*|luci-app-antiblock) ./ ; rm -Rf luciapp
         mv -n lean/!(r8101|r8125|r8126|r8168) ./ ; rm -Rf lean
         mv -n liep/!(luci-app-filebrowser) ./ ; rm -Rf liep
-        mv -n istore-packages/!(qBittorrent*|luci-app-qbittorrent-ee|baidupcs-web|luci-app-LingTiGameAcc|inter_i40e) ./;rm -rf istore-packages
+        mv -n istore-packages/!(qBittorrent*|luci-app-qbittorrent-ee|luci-app-LingTiGameAcc|inter_i40e) ./;rm -rf istore-packages
         mv -n openwrt-app-actions/applications/* ./;rm -rf openwrt-app-actions
+        # Keep one provider for each package symbol. automount already provides
+        # ntfs3-mount, and the current LuCI import already provides luci-app-eqos.
+        rm -rf ntfs3-mount eqos-master-wiwiz
         rm -Rf */.git
         for pkg in $(ls -d .github/diy/packages/*); do
           mv -f $pkg/Makefile.k $pkg/Makefile >/dev/null 2>&1 || true
