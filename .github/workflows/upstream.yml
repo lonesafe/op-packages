@@ -462,11 +462,6 @@ jobs:
           mv -f $pkg/Makefile $pkg/Makefile.k >/dev/null 2>&1 || true
         done
         rm -rf */.github
-        # Ignored package directories are intentional exclusions. Remove them
-        # before validation so CI checks exactly the snapshot that Git commits.
-        git clean -fdX
-
-
     - name: Apply patches
       run: |
         find ".github/diy/patches" -type f -name '*.patch' -print0 | sort -z | xargs -I % -t -0 -n 1 sh -c "patch -d './' --no-backup-if-mismatch -p1 -F 1 -i '%'"
@@ -557,6 +552,13 @@ jobs:
             echo "wait"
           sleep 1
         done
+
+    - name: Remove intentionally ignored packages
+      run: |
+        # Patches and package-specific modifications may still use ignored
+        # source directories. Remove them only after those steps finish so CI
+        # validates exactly the snapshot that Git commits.
+        git clean -fdX
 
     - name: Install OpenWrt validation prerequisites
       run: |
