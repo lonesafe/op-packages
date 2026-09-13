@@ -12,9 +12,7 @@
 /luci-app-siitwizard
 /luci-app-ttyd
 /luci-app-serverchan
-/luci-app-eqos
 /luci-app-webdavf
-/luci-app-baidupcs-web
 /luci-app-softether
 /subweb
 /wget
@@ -32,7 +30,6 @@
 /rclone
 /rclone-*
 /mtk-eip93
-/ndpi-netfilter
 /ntfs3-oot
 /qtools
 /libcups
