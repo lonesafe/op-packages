@@ -26,16 +26,46 @@ collect_matching_files() {
 	} | sort -u >"$output"
 }
 
+filter_reviewed_exceptions() {
+	local check=$1
+	local findings=$2
+	local filtered="${findings}.filtered"
+
+	awk -F '\t' -v check="$check" -v reviewed="$findings_dir/reviewed-exceptions.tsv" '
+		NR == FNR {
+			if ($0 !~ /^[[:space:]]*(#|$)/ && $1 == check)
+				exceptions[$2] = $0
+			next
+		}
+		$0 in exceptions {
+			print exceptions[$0] >> reviewed
+			next
+		}
+		{ print }
+	' "$repo_root/compat/static-exceptions.tsv" "$findings" >"$filtered"
+	mv "$filtered" "$findings"
+}
+
+: >"$findings_dir/reviewed-exceptions.tsv"
+
 collect_matching_files "$findings_dir/hash-skips.txt" \
 	'PKG_(MIRROR_)?HASH\s*:?=\s*(skip|x)' --glob '**/Makefile'
 collect_matching_files "$findings_dir/opkg-runtime.txt" \
-	'\bopkg\b' --glob '!README*' --glob '!**/*.po' --glob '!**/*.pot' --glob '!**/Makefile'
+	'\bopkg\b' --glob '!README*' --glob '!**/*.po' --glob '!**/*.pot' --glob '!**/*.css' \
+	--glob '!**/test/**' --glob '!**/tests/**' --glob '!**/Makefile'
 collect_matching_files "$findings_dir/ipk-references.txt" \
-	'\.ipk\b' --glob '!README*' --glob '!**/*.po' --glob '!**/*.pot'
+	'\.ipk\b' --glob '!README*' --glob '!**/*.po' --glob '!**/*.pot' --glob '!**/*.css' \
+	--glob '!**/test/**' --glob '!**/tests/**'
 collect_matching_files "$findings_dir/iptables-references.txt" \
-	'\biptables(-save|-restore)?\b' --glob '!**/*.po' --glob '!**/*.pot'
+	'\biptables(-save|-restore)?\b' --glob '!**/*.po' --glob '!**/*.pot' --glob '!**/*.css' \
+	--glob '!**/test/**' --glob '!**/tests/**'
 collect_matching_files "$findings_dir/leading-v-versions.txt" \
 	'^PKG_VERSION:=v' --glob '**/Makefile'
+
+filter_reviewed_exceptions opkg-runtime "$findings_dir/opkg-runtime.txt"
+filter_reviewed_exceptions ipk-references "$findings_dir/ipk-references.txt"
+filter_reviewed_exceptions iptables-references "$findings_dir/iptables-references.txt"
+sort -u -o "$findings_dir/reviewed-exceptions.tsv" "$findings_dir/reviewed-exceptions.tsv"
 
 makefiles=$(find . -name Makefile -type f -not -path './.git/*' | wc -l | tr -d ' ')
 hash_skip=$(wc -l <"$findings_dir/hash-skips.txt" | tr -d ' ')
@@ -58,7 +88,8 @@ cat >"$report" <<EOF
 
 The baseline is compatibility debt, not a claim that these findings are safe.
 CI rejects regressions and the limits must be lowered as packages are migrated.
-Detailed file lists are stored in the accompanying static-findings artifact.
+Tests, CSS, and narrowly reviewed exceptions are excluded from the runtime counts.
+Detailed file lists and matched exceptions are stored in the static-findings artifact.
 EOF
 
 status=0
