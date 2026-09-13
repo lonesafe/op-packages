@@ -31,5 +31,10 @@ metadata, failing on any issue not recorded in `compat/`. Kconfig cycles are
 scoped to dependency blocks containing at least one package supplied by this
 feed, so unrelated cycles in OpenWrt's official feeds are not attributed here.
 
+Runtime checks ignore test directories and CSS because those files are not
+installed executable paths. `static-exceptions.tsv` contains narrowly scoped,
+reviewed false positives or required compatibility paths. An exception is tied
+to its exact generated filename, so a changed upstream asset is reviewed again.
+
 The CI workflow always tests the latest OpenWrt `main`; a new upstream break is
 therefore visible before the compatibility baseline is updated.

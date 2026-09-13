@@ -1,0 +1,7 @@
+# check<TAB>repository-relative path<TAB>review rationale
+opkg-runtime	./luci-app-istorerouter/htdocs/luci-static/istorerouter/chunk.0779cf20.js	Configuration model name; the application also supports APK.
+opkg-runtime	./luci-app-istorerouter/htdocs/luci-static/istorerouter/index.js	Backward-compatible route name, not an opkg command invocation.
+opkg-runtime	./luci-theme-footstrap/htdocs/luci-static/resources/fs-appearance.js	Comment comparing apk install-if behavior with legacy opkg.
+ipk-references	./luci-app-istorerouter/htdocs/luci-static/istorerouter/chunk.1c430a75.js	Upload UI explicitly accepts both .apk and legacy .ipk packages.
+iptables-references	./luci-app-passwall/root/usr/share/passwall/nftables.sh	mwan3 interop only; the chain guard implies mwan3, which depends on iptables.
+iptables-references	./luci-app-passwall2/root/usr/share/passwall2/nftables.sh	mwan3 interop only; the chain guard implies mwan3, which depends on iptables.
