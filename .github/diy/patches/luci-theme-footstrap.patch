@@ -9,18 +9,16 @@
 
 --- a/luci-theme-footstrap/styles/02-tokens.css
 +++ b/luci-theme-footstrap/styles/02-tokens.css
-@@ -17,6 +17,11 @@
- 	 * docs/design-system.md. Light = :root; dark = :root[data-darkmode="true"].
- 	 * ============================================================ */
- 	:root {
+@@ -416,4 +416,9 @@
+ 		 * Binding constraint: apps read a level as `color:` about as often as as `background:`, so
+ 		 * every level must clear WCAG AA as text on --fs-bg/--fs-panel/--fs-panel2 and carry a
+ 		 * legible --on-*-color as a fill. */
 +		--card-bg-color: var(--fs-panel) !important;
 +		--border-color: var(--fs-border) !important;
 +		--app-container_title-color: var(--fs-text) !important;
 +		--item-label_key-span-color: var(--app-container_title-color) !important;
 +		--app-container_status-label_block: var(--app-container_title-color) !important;
- 		/* Palette COLOURS are in 03-palettes.css (one swappable block per colourway × mode);
- 		 * everything here is palette-INDEPENDENT or var()-derived, so it follows the active
- 		 * palette. The INKS (--fs-on-accent &c.) are in the palette blocks too, beside the
+ 		--background-color-high: var(--fs-panel);
 diff --git a/luci-theme-footstrap/root/etc/footstrap/pattern.svg b/luci-theme-footstrap/root/etc/footstrap/pattern.svg
 new file mode 100644
 index 000000000..72eb03cdc

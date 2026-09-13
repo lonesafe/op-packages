@@ -590,10 +590,11 @@ jobs:
       with:
         name: scheduled-update-compatibility-report
         path: |
+          ${{ runner.temp }}/upstream-clone-failures.log
           ${{ runner.temp }}/static-report.md
           ${{ runner.temp }}/openwrt-main-report.md
           ${{ runner.temp }}/compatibility-logs/
-        if-no-files-found: warn
+        if-no-files-found: ignore
         retention-days: 14
 
     - name: Apply
