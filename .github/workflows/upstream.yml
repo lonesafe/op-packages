@@ -462,6 +462,9 @@ jobs:
           mv -f $pkg/Makefile $pkg/Makefile.k >/dev/null 2>&1 || true
         done
         rm -rf */.github
+        # Ignored package directories are intentional exclusions. Remove them
+        # before validation so CI checks exactly the snapshot that Git commits.
+        git clean -fdX
 
 
     - name: Apply patches
