@@ -15,7 +15,7 @@ local xray_version = api.get_app_version("xray")
 local xray_min_version = "26.3.27"
 
 local function get_domain_excluded()
-	local path = "/usr/share/passwall/domains_excluded"
+	local path = string.format("/usr/share/%s/rules/domains_excluded", api.c_config)
 	local content = fs.readfile(path)
 	if not content then return nil end
 	local hosts = {}
@@ -44,6 +44,7 @@ function gen_outbound(flag, node, tag, proxy_table)
 		local remarks = node.remarks
 
 		local proxy_tag = nil
+		local dialer_proxy_tag = nil
 		local fragment = nil
 		local noise = nil
 		local run_socks_instance = true
@@ -86,12 +87,7 @@ function gen_outbound(flag, node, tag, proxy_table)
 			node.stream_security = "none"
 			proxy_tag = "socks <- " .. node_id
 		else
-			if proxy_tag then
-				node.proxySettings = {
-					tag = proxy_tag,
-					transportLayer = true
-				}
-			end
+			dialer_proxy_tag = proxy_tag
 		end
 
 		if node.type == "Xray" then
@@ -124,6 +120,10 @@ function gen_outbound(flag, node, tag, proxy_table)
 			node.stream_security = "tls"
 		end
 
+		if node.protocol == "http" and node.stream_security == "tls" then
+			node.transport = "raw"
+		end
+
 		if remarks then
 			tag = tag .. ":" .. remarks
 		end
@@ -135,7 +135,6 @@ function gen_outbound(flag, node, tag, proxy_table)
 			_flag = flag,
 			_flag_proxy_tag = proxy_tag,
 			tag = tag,
-			proxySettings = node.proxySettings or nil,
 			protocol = node.protocol,
 			mux = {
 				enabled = (node.mux == "1") and true or false,
@@ -143,7 +142,7 @@ function gen_outbound(flag, node, tag, proxy_table)
 				xudpConcurrency = (node.mux == "1" and ((node.xudp_concurrency) and tonumber(node.xudp_concurrency) or 8)) or nil
 			} or nil,
 			-- 底层传输配置
-			streamSettings = (node.streamSettings or node.protocol == "vmess" or node.protocol == "vless" or node.protocol == "socks" or node.protocol == "shadowsocks" or node.protocol == "trojan" or node.protocol == "hysteria") and {
+			streamSettings = (node.streamSettings or dialer_proxy_tag or node.protocol == "vmess" or node.protocol == "vless" or node.protocol == "socks" or node.protocol == "shadowsocks" or node.protocol == "trojan" or node.protocol == "hysteria" or node.protocol == "http") and {
 				sockopt = {
 					mark = 255,
 					domainStrategy = node.domain_strategy or "UseIP",
@@ -154,7 +153,8 @@ function gen_outbound(flag, node, tag, proxy_table)
 						PrioritizeIPv6 = false,
 						Interleave = 1,
 						MaxConcurrentTry = 4
-					} or nil
+					} or nil,
+					dialerProxy = dialer_proxy_tag,
 				},
 				[(api.compare_versions(xray_version, "<", "26.7.11")) and "network" or "method"] = node.transport, -- Todo: Remove version check and "network"
 				security = node.stream_security,
@@ -308,7 +308,8 @@ function gen_outbound(flag, node, tag, proxy_table)
 								type = "realm",
 								settings = {
 									url = url,
-									stunServers = stun
+									stunServers = stun,
+									portMapping = (node.hysteria2_realm_upnp == "1") and { enabled = true } or nil
 								}
 							}
 							udp[#udp+1] = r
@@ -547,7 +548,7 @@ function gen_config_server(node)
 			allowTransparent = false,
 			users = users
 		}
-		node.transport = "tcp"
+		node.transport = "raw"
 		node.tcp_guise = "none"
 	elseif node.protocol == "shadowsocks" then
 		settings = {
@@ -567,11 +568,11 @@ function gen_config_server(node)
 			version = 2,
 			users = users
 		}
-	elseif node.protocol == "dokodemo-door" then
+	elseif node.protocol == "tunnel" then
 		settings = {
-			network = node.d_protocol,
-			address = node.d_address,
-			port = tonumber(node.d_port)
+			allowedNetwork = node.d_protocol,
+			rewriteAddress = node.d_address,
+			rewritePort = tonumber(node.d_port)
 		}
 	elseif node.protocol == "wireguard" then
 		settings = {
@@ -669,7 +670,7 @@ function gen_config_server(node)
 		-- 传入连接
 		inbounds = {
 			{
-				listen = (node.bind_local == "1") and "127.0.0.1" or nil,
+				listen = "::",
 				port = tonumber(node.port),
 				protocol = node.protocol,
 				settings = settings,
@@ -782,7 +783,8 @@ function gen_config_server(node)
 									type = "realm",
 									settings = {
 										url = url,
-										stunServers = stun
+										stunServers = stun,
+										portMapping = (node.hysteria2_realm_upnp == "1") and { enabled = true } or nil
 									}
 								}
 								udp[#udp+1] = r
@@ -869,8 +871,7 @@ function gen_config(var)
 	local server_host = var["server_host"]
 	local server_port = var["server_port"]
 	local tcp_proxy_way = var["tcp_proxy_way"] or "redirect"
-	local tcp_redir_port = var["tcp_redir_port"]
-	local udp_redir_port = var["udp_redir_port"]
+	local redir_port = var["redir_port"]
 	local local_socks_address = var["local_socks_address"] or "0.0.0.0"
 	local local_socks_port = var["local_socks_port"]
 	local local_socks_username = var["local_socks_username"]
@@ -917,12 +918,12 @@ function gen_config(var)
 	if xray_settings.fragment == "1" then
 		local lengths, delays = {}, {}
 		api.trim(xray_settings.fragment_lengths):gsub("[^,]+", function(w)
-		    w = w:gsub("%s+", "")
-		    if w ~= "" then lengths[#lengths+1] = w end
+			w = w:gsub("%s+", "")
+			if w ~= "" then lengths[#lengths+1] = w end
 		end)
 		api.trim(xray_settings.fragment_delays):gsub("[^,]+", function(w)
-		    w = w:gsub("%s+", "")
-		    if w ~= "" then delays[#delays+1] = w end
+			w = w:gsub("%s+", "")
+			if w ~= "" then delays[#delays+1] = w end
 		end)
 		fragment_table = {
 			type = "fragment",
@@ -1011,11 +1012,18 @@ function gen_config(var)
 
 
 		function get_node_by_id(node_id)
-			if not node_id or node_id == "" or node_id == "nil" then return nil end
-			local section = api.uci_get_c(node_id) or {}
+			local section
+			if type(node_id) == "table" then
+				section = node_id
+			elseif type(node_id) == "string" then
+				if node_id == "" or node_id == "nil" then return nil end
+				section = api.uci_get_c(node_id) or {}
+			else
+				return nil
+			end
 			if section[".type"] == "socks" then
-				local result = {
-					[".name"] = node_id,
+				return {
+					[".name"] = section[".name"],
 					remarks = "socks[%s]" % section.port,
 					type = "Xray",
 					protocol = "socks",
@@ -1024,7 +1032,6 @@ function gen_config(var)
 					transport = "tcp",
 					stream_security = "none"
 				}
-				return result
 			end
 			if section[".type"] == "nodes" then
 				return section
@@ -1068,7 +1075,7 @@ function gen_config(var)
 				blc_nodes = _node.balancing_node
 			end
 
-			api.log("  - 加载 Xray 负载均衡 节点【" .. (_node.remarks or "") .. "】，子节点数量：" .. #(blc_nodes or {}))
+			-- api.log("  - 加载 Xray 负载均衡 节点【" .. (_node.remarks or "") .. "】，子节点数量：" .. #(blc_nodes or {}))
 
 			local valid_nodes = {}
 			for i = 1, #(blc_nodes or {}) do
@@ -1202,10 +1209,9 @@ function gen_config(var)
 						end
 						if preproxy_outbound then
 							outbound.tag = preproxy_outbound.tag .. " -> " .. outbound.tag
-							outbound.proxySettings = {
-								tag = preproxy_outbound.tag,
-								transportLayer = true
-							}
+							outbound.streamSettings = outbound.streamSettings or {}
+							outbound.streamSettings.sockopt = outbound.streamSettings.sockopt or {}
+							outbound.streamSettings.sockopt.dialerProxy = preproxy_outbound.tag
 							if not exist then
 								last_insert_outbound = preproxy_outbound
 							end
@@ -1231,8 +1237,8 @@ function gen_config(var)
 							tag = in_tag,
 							listen = "127.0.0.1",
 							port = new_port,
-							protocol = "dokodemo-door",
-							settings = {network = "tcp,udp", address = to_node.address, port = tonumber(to_node.port)}
+							protocol = "tunnel",
+							settings = {allowedNetwork = "tcp,udp", rewriteAddress = to_node.address, rewritePort = tonumber(to_node.port)}
 						})
 						if to_node.tls_serverName == nil then
 							to_node.tls_serverName = to_node.address
@@ -1253,10 +1259,9 @@ function gen_config(var)
 					if to_outbound then
 						to_outbound.tag = outbound.tag .. " -> " .. to_outbound.tag
 						if to_node.type == "Xray" then
-							to_outbound.proxySettings = {
-								tag = outbound.tag,
-								transportLayer = true
-							}
+							to_outbound.streamSettings = to_outbound.streamSettings or {}
+							to_outbound.streamSettings.sockopt = to_outbound.streamSettings.sockopt or {}
+							to_outbound.streamSettings.sockopt.dialerProxy = outbound.tag
 						end
 						table.insert(outbounds_table, to_outbound)
 						default_outTag = to_outbound.tag
@@ -1273,12 +1278,7 @@ function gen_config(var)
 
 		function gen_outbound_get_tag(flag, node_id, tag, proxy_table)
 			if not node_id or node_id == "" or node_id == "nil" then return nil end
-			local node
-			if type(node_id) == "string" then
-				node = get_node_by_id(node_id)
-			elseif type(node_id) == "table" then
-				node = node_id
-			end
+			local node = get_node_by_id(node_id)
 			if not tag then tag = node[".name"] end
 			if node then
 				if proxy_table.chain_proxy == "1" or proxy_table.chain_proxy == "2" then
@@ -1448,11 +1448,9 @@ function gen_config(var)
 					if e["inbound"] and e["inbound"] ~= "" then
 						inbound_tag = {}
 						if e["inbound"]:find("tproxy") then
-							if tcp_redir_port then
-								table.insert(inbound_tag, "tcp_redir")
-							end
-							if udp_redir_port then
-								table.insert(inbound_tag, "udp_redir")
+							if redir_port then
+								table.insert(inboundTag, "tcp_redir")
+								table.insert(inboundTag, "udp_redir")
 							end
 						end
 						if e["inbound"]:find("socks") then
@@ -1540,11 +1538,6 @@ function gen_config(var)
 				})
 			end
 
-			table.insert(rules, {
-				outboundTag = "direct",
-				ip = { "geoip:private" }
-			})
-
 			if default_outboundTag then
 				local rule = {
 					_flag = "default",
@@ -1585,13 +1578,14 @@ function gen_config(var)
 			end
 		end
 
-		if tcp_redir_port or udp_redir_port then
+		if redir_port then
 			local inbound = {
-				protocol = "dokodemo-door",
-				settings = {network = "tcp,udp", followRedirect = true},
+				port = tonumber(redir_port),
+				protocol = "tunnel",
+				settings = {allowedNetwork = "tcp,udp", followRedirect = true},
 				streamSettings = {sockopt = {tproxy = "tproxy"}},
 				sniffing = {
-					enabled = (xray_settings.sniffing_override_dest == "1") or (node and node.protocol == "_shunt") or false
+					enabled = xray_settings.sniffing_override_dest == "1" or node.protocol == "_shunt"
 				}
 			}
 			if inbound.sniffing.enabled == true then
@@ -1611,22 +1605,16 @@ function gen_config(var)
 				end
 			end
 
-			if tcp_redir_port then
-				local tcp_inbound = api.clone(inbound)
-				tcp_inbound.tag = "tcp_redir"
-				tcp_inbound.settings.network = "tcp"
-				tcp_inbound.port = tonumber(tcp_redir_port)
-				tcp_inbound.streamSettings.sockopt.tproxy = tcp_proxy_way
-				table.insert(inbounds, tcp_inbound)
-			end
+			local tcp_inbound = api.clone(inbound)
+			tcp_inbound.tag = "tcp_redir"
+			tcp_inbound.settings.allowedNetwork = "tcp"
+			tcp_inbound.streamSettings.sockopt.tproxy = tcp_proxy_way
+			table.insert(inbounds, tcp_inbound)
 
-			if udp_redir_port then
-				local udp_inbound = api.clone(inbound)
-				udp_inbound.tag = "udp_redir"
-				udp_inbound.settings.network = "udp"
-				udp_inbound.port = tonumber(udp_redir_port)
-				table.insert(inbounds, udp_inbound)
-			end
+			local udp_inbound = api.clone(inbound)
+			udp_inbound.tag = "udp_redir"
+			udp_inbound.settings.allowedNetwork = "udp"
+			table.insert(inbounds, udp_inbound)
 		end
 	end
 
@@ -1671,8 +1659,12 @@ function gen_config(var)
 				_direct_dns.port = port
 				_direct_dns.address = direct_dns_udp_server
 			elseif direct_dns_tcp_server then
+				if api.is_ipv6(direct_dns_tcp_server) then
+					direct_dns_tcp_server = api.get_ipv6_full(direct_dns_tcp_server)
+				end
 				local port = tonumber(direct_dns_port) or 53
 				_direct_dns.address = "tcp://" .. direct_dns_tcp_server .. ":" .. port
+				_direct_dns.port = port
 			end
 
 			if COMMON.default_outbound_tag == "direct" then
@@ -1704,7 +1696,11 @@ function gen_config(var)
 			_remote_dns.port = tonumber(remote_dns_udp_port) or 53
 
 		elseif remote_dns_tcp_server then
+			if api.is_ipv6(remote_dns_tcp_server) then
+				remote_dns_tcp_server = api.get_ipv6_full(remote_dns_tcp_server)
+			end
 			_remote_dns.address = "tcp://" .. remote_dns_tcp_server .. ":" .. tonumber(remote_dns_tcp_port) or 53
+			_remote_dns.port = tonumber(remote_dns_tcp_port) or 53
 
 		elseif remote_dns_doh then
 			local _a = api.parseDoH(remote_dns_doh)
@@ -1790,11 +1786,10 @@ function gen_config(var)
 			table.insert(inbounds, {
 				listen = "127.0.0.1",
 				port = tonumber(dns_listen_port),
-				protocol = "dokodemo-door",
+				protocol = "tunnel",
 				tag = "dns-in",
 				settings = {
-					address = "0.0.0.0",
-					network = "tcp,udp"
+					allowedNetwork = "tcp,udp"
 				}
 			})
 
@@ -1803,8 +1798,8 @@ function gen_config(var)
 			remote_dns_outbound = {
 				tag = "dns-out",
 				protocol = "dns",
-				proxySettings = dns_outbound_tag and {
-					tag = (dns_outbound_tag ~= "blackhole") and dns_outbound_tag or "direct"
+				streamSettings = dns_outbound_tag and {
+					sockopt = { dialerProxy = (dns_outbound_tag ~= "blackhole") and dns_outbound_tag or "direct" }
 				} or nil,
 				settings = {
 					address = (chn_list ~= "proxy") and "8.8.8.8" or "223.5.5.5",
@@ -2035,13 +2030,13 @@ function gen_config(var)
 		local direct_outbound = {
 			protocol = "freedom",
 			tag = "direct",
-			settings = {
-				domainStrategy = (direct_dns_query_strategy and direct_dns_query_strategy ~= "") and direct_dns_query_strategy or "UseIP",
-				finalRules = (api.compare_versions(xray_version, ">", "26.4.25")) and {{ action = "allow" }} or nil  -- Todo: Remove version check
-			},
+			settings = (api.compare_versions(xray_version, ">", "26.4.25")) and {  -- Todo: Remove version check
+				finalRules = {{ action = "allow" }}
+			} or nil,
 			streamSettings = {
 				sockopt = {
-					mark = 255
+					mark = 255,
+					domainStrategy = (direct_dns_query_strategy and direct_dns_query_strategy ~= "") and direct_dns_query_strategy or "UseIP"
 				}
 			}
 		}

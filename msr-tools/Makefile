@@ -3,11 +3,11 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=msr-tools
 PKG_VERSION:=1.3
-PKG_RELEASE:=1
+PKG_RELEASE:=2
 
 PKG_SOURCE:=$(PKG_NAME)-$(PKG_VERSION).tar.gz
 PKG_SOURCE_URL:=https://github.com/intel/msr-tools/archive/refs/tags/
-PKG_HASH:=skip
+PKG_HASH:=9b87245ee091a798184e447066e9e0d7709b7c81f5e6ad55f2b958c1aa50c4a3
 PKG_MAINTAINER:=jjm2473 <jjm2473@gmail.com>
 
 PKG_LICENSE:=GPL-2.0-or-later

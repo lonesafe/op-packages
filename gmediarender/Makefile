@@ -6,11 +6,11 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=gmediarender
 PKG_VERSION:=0.3.1
-PKG_RELEASE:=1
+PKG_RELEASE:=2
 
 PKG_SOURCE:=$(PKG_NAME)-$(PKG_VERSION).tar.gz
 PKG_SOURCE_URL:=https://codeload.github.com/hzeller/gmrender-resurrect/tar.gz/v$(PKG_VERSION)?
-PKG_HASH:=skip
+PKG_HASH:=dbe0d41b01339a4805fdd0edf914fbc4870dba2eb9c54ad5bf9446ccfd3fa482
 PKG_BUILD_DIR:=$(BUILD_DIR)/gmrender-resurrect-$(PKG_VERSION)
 
 PKG_FIXUP:=autoreconf

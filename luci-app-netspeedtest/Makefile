@@ -10,7 +10,7 @@ include $(TOPDIR)/rules.mk
 PKG_NAME:=luci-app-netspeedtest
 
 PKG_VERSION:=5.2.1
-PKG_RELEASE:=4
+PKG_RELEASE:=6
 
 LUCI_TITLE:=LuCI Support for netspeedtest
 LUCI_DEPENDS:=+ookla-speedtest +homebox +python3-light +python3-setuptools +python3-xml \

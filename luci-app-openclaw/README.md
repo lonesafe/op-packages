@@ -27,9 +27,14 @@
 
 | 组件 | 默认版本 | 说明 |
 |------|----------|------|
-| OpenClaw | `2026.6.11` | npm `latest` 稳定标签 |
-| Node.js | `22.23.0` | Alpine musl LTS 包；OpenClaw 2026.6.x 要求 `>=22.19.0`，安装后会按 `engines.node` 做强校验 |
-| 微信插件 | `@tencent-weixin/openclaw-weixin@2.4.6` | CLI 使用 `@tencent-weixin/openclaw-weixin-cli@2.1.4` |
+| OpenClaw | `2026.9.1` | npm `latest` 稳定标签（Phase 0 锁定已测试版本；安装时阻断未知脚本，仅运行已校验 lifecycle） |
+| Node.js | `22.23.2` | x86_64 与 aarch64 均优先从 unofficial-builds 及镜像源获取，自托管资产作为兜底；严格验证 `engines.node`，失败关闭 |
+| 微信插件 | `@tencent-weixin/openclaw-weixin@2.4.8` | CLI 使用 `@tencent-weixin/openclaw-weixin-cli@2.1.4` |
+
+### 运行时与架构说明
+
+- **x86_64 / aarch64 (musl)**：Node.js v22.23.2 预编译运行时优先通过上游 [unofficial-builds](https://unofficial-builds.nodejs.org/) 及 npmmirror 镜像源获取，安装时自动下载并强校验 `SHASUMS256.txt`。同时在 `.github/workflows/build-node-musl.yml` 中保留基于 Alpine LTS 的自托管构建打包流程作为兜底源。
+
 
 ## 📦 安装
 
@@ -140,10 +145,26 @@ opkg install python3-light
 - 插件注册缺失：重新安装插件，启动时也会自动补齐 `openclaw-weixin` 配置。
 - 目录权限错误：按页面日志提示修复 OpenClaw 数据目录权限。
 
+## AI 模型选择机制
+
+配置菜单里的模型清单分三层，避免硬编码的模型 ID 随上游迭代而过期：
+
+1. **精选模型** —— 内置于 `model-presets.json`，每个 Provider 给推荐/最强/均衡/快速四档。
+   离线可用、首屏即显示。
+2. **从 OpenClaw 获取完整模型列表** —— 调用 `openclaw models list --provider <id>`
+   动态发现当前实际可用的模型（带 6 秒超时，失败或超时自动回落到精选列表）。
+   未安装对应 Provider 插件、或未配置 API Key 时可能返回空，属正常情况。
+3. **手动输入模型 ID** —— 永久保留。上游发布新模型时无需等待本插件更新。
+
+因此 GPT / Claude / Gemini 等更新后，通常不必升级本插件即可使用新模型。
+
 ## 已知说明
 
 - OpenClaw 的 diagnostic heartbeat 可能在日志中出现类似周期性探测记录。它不是一次真实用户对话请求；如需降低噪音，优先在 OpenClaw 配置或日志采集侧降低诊断日志级别，不建议直接修改模型调用逻辑。
-- 当前仓库提供源码、OpenWrt feeds 集成方式、本地 `.run` / `.ipk` 构建脚本入口；本次维护不自动生成 Release 产物。
+- 配置管理界面依赖 `oc-config-interactive.js`；若该文件缺失（例如自行裁剪打包清单），
+  界面会静默回落到功能较少的传统数字菜单。`tests/test_packaging_parity.sh` 会校验
+  三条打包路径的文件清单一致性。
+- 当前仓库提供源码、OpenWrt feeds 集成方式、本地 `.run` / `.ipk` 构建脚本入口；推送 `v*` 标签后 CI 会自动构建并发布 Release 产物。
 
 ## 📂 目录结构
 
@@ -167,12 +188,19 @@ luci-app-openclaw/
 │   └── usr/
 │       ├── libexec/                  # 共享 shell helper
 │       ├── bin/openclaw-env          # 环境管理工具
-│       └── share/openclaw/           # 配置终端资源
+│       └── share/openclaw/
+│           ├── oc-config.sh          # 配置管理入口（无 TTY 时的回退菜单）
+│           ├── oc-config-interactive.js  # 交互式配置菜单（默认路径）
+│           ├── oc-menu-engine.js     # 方向键菜单引擎
+│           ├── model-presets.json    # 精选模型预设（shell 与 JS 共读）
+│           ├── web-pty.js            # Web PTY 服务
+│           └── ui/                   # 配置终端前端资源
 ├── scripts/
 │   ├── build_ipk.sh                  # 本地 IPK 构建
 │   ├── build_run.sh                  # .run 安装包构建
-│   ├── download_deps.sh              # 下载离线依赖 (Node.js + OpenClaw)
+│   ├── gen-release-body.sh           # Release 说明生成
 │   └── build-node-musl.sh            # 编译 Node.js musl 静态链接版本
+├── tests/                            # 契约测试（sh tests/run_all.sh）
 └── .github/workflows/
     ├── build.yml                     # 在线构建 + 发布
     └── build-node-musl.yml           # Node.js musl 构建

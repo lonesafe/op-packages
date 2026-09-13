@@ -23,16 +23,22 @@ test("production assets stay within raw-transfer budgets", () => {
   // binds.
   assert.ok(main <= 193_000, "main.css exceeds 193 KB");
   assert.ok(login <= 12_000, "login.css exceeds 12 KB");
-  assert.ok(menu <= 21_500, "menu-aurora.js exceeds 21.5 KB");
+  // 22K: palette recents (record on pick, pure-LRU browse order, storage
+  // validation) added ~0.8 KB and the ">" logout command ~0.2 KB. The total
+  // budget below moved by the same amount.
+  assert.ok(menu <= 22_000, "menu-aurora.js exceeds 22 KB");
   // 15K: the expiry gate, readonly folding, menu.d node css, wildcard
   // actions, progress bar, visibility gate and contract check added ~3 KB
   // over the first cut; the total-transfer budget below moved by the same
   // amount. Mirrored in the perf skill's aurora-budgets.md.
-  assert.ok(router <= 15_000, "router-aurora.js exceeds 15 KB");
+  // 16K: the router now ships from @eamonxg/luci-theme-devkit — theme hooks
+  // as document events, the title format read off the document, and the
+  // inner-scroller restoration shared with shadcn (+0.8 KB raw, +0.3 KB gz).
+  assert.ok(router <= 16_000, "router-aurora.js exceeds 16 KB");
   assert.ok(logo <= 16_000, "logo.svg exceeds 16 KB");
   assert.ok(
-    main + menu + router + font + logo <= 267_000,
-    "admin assets exceed 267 KB",
+    main + menu + router + font + logo <= 268_500,
+    "admin assets exceed 268.5 KB",
   );
   assert.ok(login + font + logo <= 55_000, "login assets exceed 55 KB");
 });

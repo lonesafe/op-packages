@@ -2,11 +2,11 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=python-gobject
 PKG_VERSION:=3.46.0
-PKG_RELEASE:=1
+PKG_RELEASE:=2
 
 PKG_SOURCE:=python311-gobject-prebuilt-$(PKG_VERSION).tar.gz
 PKG_SOURCE_URL:=https://github.com/jjm2473/openwrt-apps/releases/download/prebuilt/
-PKG_HASH:=skip
+PKG_HASH:=0a5ac594212274e703d5c764dc6b612c3c3cfdd9884571c4d9788c0e73d70300
 
 PKG_MAINTAINER:=jjm2473 <jjm2473@gmail.com>
 PKG_LICENSE:=LGPL-2.1-or-later

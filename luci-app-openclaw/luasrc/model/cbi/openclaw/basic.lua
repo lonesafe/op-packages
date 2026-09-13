@@ -22,13 +22,20 @@ act = s3:option(DummyValue, "_actions")
 act.rawhtml = true
 act.cfgvalue = function(self, section)
 	local ctl_url = luci.dispatcher.build_url("admin", "services", "openclaw", "service_ctl")
+	local service_ctl_url = ctl_url
 	local log_url = luci.dispatcher.build_url("admin", "services", "openclaw", "setup_log")
 	local check_url = luci.dispatcher.build_url("admin", "services", "openclaw", "check_update")
 	local uninstall_url = luci.dispatcher.build_url("admin", "services", "openclaw", "uninstall")
 	local plugin_upgrade_url = luci.dispatcher.build_url("admin", "services", "openclaw", "plugin_upgrade")
 	local plugin_upgrade_log_url = luci.dispatcher.build_url("admin", "services", "openclaw", "plugin_upgrade_log")
 	local check_system_url = luci.dispatcher.build_url("admin", "services", "openclaw", "check_system")
+	-- CSRF token: 会改状态或返回凭据的端点已改为 post()，
+	-- LuCI 的 test_post_security() 要求表单里带上与会话匹配的 token。
+	local csrf_token = luci.dispatcher.context.authtoken or ""
 	local html = {}
+
+	html[#html+1] = '<script type="text/javascript">var ocCsrfToken=' ..
+		string.format('%q', csrf_token) .. ';</script>'
 
 	-- 按钮区域
 	html[#html+1] = '<div style="display:flex;gap:10px;flex-wrap:wrap;margin:10px 0;">'
@@ -48,16 +55,18 @@ act.cfgvalue = function(self, section)
 	html[#html+1] = '<h3 style="margin:0 0 16px 0;font-size:16px;color:#333;">📦 选择安装版本</h3>'
 	html[#html+1] = '<div style="display:flex;flex-direction:column;gap:12px;">'
 	-- 稳定版选项
+	local default_tested_ver = luci.sys.exec("sed -n 's/^OC_TESTED_VERSION=\"\\(.*\\)\"/\\1/p' /usr/bin/openclaw-env 2>/dev/null"):gsub("%s+", "")
+	if default_tested_ver == "" then default_tested_ver = "2026.9.1" end
 	html[#html+1] = '<label style="display:flex;align-items:flex-start;gap:10px;padding:14px 16px;border:2px solid #4a90d9;border-radius:8px;cursor:pointer;background:#f0f7ff;" id="oc-opt-stable">'
 	html[#html+1] = '<input type="radio" name="oc-ver-choice" value="stable" checked style="margin-top:2px;">'
 	html[#html+1] = '<div><strong style="color:#333;">✅ 稳定版 (推荐)</strong>'
-	html[#html+1] = '<div style="font-size:12px;color:#666;margin-top:4px;">版本 v' .. luci.sys.exec("sed -n 's/^OC_TESTED_VERSION=\"\\(.*\\)\"/\\1/p' /usr/bin/openclaw-env 2>/dev/null"):gsub("%s+", "") .. '，已经过完整测试，兼容性良好。</div>'
+	html[#html+1] = '<div style="font-size:12px;color:#666;margin-top:4px;">版本 v' .. default_tested_ver .. ' (已验证版)，已经过完整测试，兼容性良好。</div>'
 	html[#html+1] = '</div></label>'
 	-- 最新版选项
 	html[#html+1] = '<label style="display:flex;align-items:flex-start;gap:10px;padding:14px 16px;border:2px solid #e0e0e0;border-radius:8px;cursor:pointer;background:#fff;" id="oc-opt-latest">'
 	html[#html+1] = '<input type="radio" name="oc-ver-choice" value="latest" style="margin-top:2px;">'
-	html[#html+1] = '<div><strong style="color:#333;">🆕 最新版</strong>'
-	html[#html+1] = '<div style="font-size:12px;color:#e36209;margin-top:4px;">⚠️ 安装 npm 上的最新发布版本，可能存在未经验证的兼容性问题。</div>'
+	html[#html+1] = '<div><strong style="color:#333;">🆕 最新版 (未经验证)</strong>'
+	html[#html+1] = '<div style="font-size:12px;color:#e36209;margin-top:4px;">⚠️ 安装 npm 上的最新发布版本 (未经验证)，可能存在未经验证的兼容性问题。</div>'
 	html[#html+1] = '</div></label>'
 	html[#html+1] = '</div>'
 	-- 自定义安装路径
@@ -92,6 +101,24 @@ act.cfgvalue = function(self, section)
 
 	-- 版本选择对话框逻辑
 	html[#html+1] = 'var _setupTimer=null;'
+	html[#html+1] = 'var _setupOperation="setup";'
+	html[#html+1] = 'var _setupPollErrors=0;'
+	html[#html+1] = 'function ocAcceptedResponse(x){'
+	html[#html+1] = 'if(!x||typeof x.status!=="number"||x.status<200||x.status>=300)return{ok:false,message:"服务器拒绝请求 (HTTP "+(x&&x.status||0)+")"};'
+	html[#html+1] = 'try{var r=JSON.parse(x.responseText);return r&&r.status==="ok"?{ok:true,data:r}:{ok:false,message:(r&&r.message)||"服务器未接受请求"};}catch(e){return{ok:false,message:"服务器返回了无效响应"};}'
+	html[#html+1] = '}'
+	html[#html+1] = 'function ocSetupRequestRejected(btn,label,message){'
+	html[#html+1] = 'if(_setupTimer){clearInterval(_setupTimer);_setupTimer=null;}'
+	html[#html+1] = 'if(btn){btn.disabled=false;btn.textContent=label;}'
+	html[#html+1] = 'var statusEl=document.getElementById("setup-log-status");var logEl=document.getElementById("setup-log-content");'
+	html[#html+1] = 'if(statusEl)statusEl.textContent="❌ "+message;if(logEl)logEl.textContent+=message+"\\n";'
+	html[#html+1] = '}'
+	html[#html+1] = 'function ocSetupPollingUnknown(){'
+	html[#html+1] = 'if(_setupTimer){clearInterval(_setupTimer);_setupTimer=null;}'
+	html[#html+1] = 'var btn=document.getElementById(_setupOperation==="core"?"btn-core-upgrade":"btn-setup");'
+	html[#html+1] = 'if(btn){btn.disabled=false;btn.textContent=_setupOperation==="core"?"⬆️ 重试核心升级":"📦 安装运行环境";}'
+	html[#html+1] = 'var statusEl=document.getElementById("setup-log-status");if(statusEl)statusEl.textContent="⚠️ 状态查询连续失败，请手动刷新确认；后台任务可能仍在运行。";'
+	html[#html+1] = '}'
 	html[#html+1] = 'function ocShowSetupDialog(){'
 	html[#html+1] = 'var dlg=document.getElementById("oc-setup-dialog");'
 	html[#html+1] = 'dlg.style.display="flex";'
@@ -174,6 +201,7 @@ act.cfgvalue = function(self, section)
 
 	-- 安装运行环境 (带实时日志，支持自定义路径)
 	html[#html+1] = 'function ocSetup(version,mem_mb,disk_mb,install_path){'
+	html[#html+1] = '_setupOperation="setup";'
 	html[#html+1] = 'var btn=document.getElementById("btn-setup");'
 	html[#html+1] = 'var logEl=document.getElementById("setup-log-content");'
 	html[#html+1] = 'btn.disabled=true;btn.textContent="⏳ 安装中...";'
@@ -182,9 +210,9 @@ act.cfgvalue = function(self, section)
 	html[#html+1] = 'logEl.textContent+="════════════════════════════════════════\\n";'
 	html[#html+1] = 'logEl.textContent+="安装路径: "+install_path+"\\n";'
 	html[#html+1] = 'logEl.textContent+="正在启动安装...\\n";'
-	html[#html+1] = '(new XHR()).get("' .. ctl_url .. '?action=setup&version="+encodeURIComponent(version)+"&install_path="+encodeURIComponent(install_path),null,function(x){'
-	html[#html+1] = 'try{JSON.parse(x.responseText);}catch(e){}'
-	html[#html+1] = 'ocPollSetupLog();'
+	html[#html+1] = '(new XHR()).post("' .. ctl_url .. '?action=setup&version="+encodeURIComponent(version)+"&install_path="+encodeURIComponent(install_path),{token:ocCsrfToken},function(x){'
+	html[#html+1] = 'var accepted=ocAcceptedResponse(x);'
+	html[#html+1] = 'if(accepted.ok){ocPollSetupLog();}else{ocSetupRequestRejected(btn,"📦 安装运行环境",accepted.message);}'
 	html[#html+1] = '});'
 	html[#html+1] = '}'
 
@@ -194,6 +222,7 @@ act.cfgvalue = function(self, section)
 	html[#html+1] = 'function ocPollSetupLog(){'
 	html[#html+1] = 'if(_setupTimer)clearInterval(_setupTimer);'
 	html[#html+1] = '_lastLogLen=0;'
+	html[#html+1] = '_setupPollErrors=0;'
 	html[#html+1] = '_autoScrollEnabled=true;'  -- 初始状态: 启用自动滚动
 	html[#html+1] = 'var logEl=document.getElementById("setup-log-content");'
 	-- 绑定滚动事件监听器 (只绑定一次)
@@ -212,7 +241,9 @@ act.cfgvalue = function(self, section)
 	html[#html+1] = '_setupTimer=setInterval(function(){'
 	html[#html+1] = '(new XHR()).get("' .. log_url .. '",null,function(x){'
 	html[#html+1] = 'try{'
+	html[#html+1] = 'if(!x||x.status<200||x.status>=300)throw new Error("HTTP "+(x&&x.status||0));'
 	html[#html+1] = 'var r=JSON.parse(x.responseText);'
+	html[#html+1] = '_setupPollErrors=0;'
 	html[#html+1] = 'var logEl=document.getElementById("setup-log-content");'
 	html[#html+1] = 'var statusEl=document.getElementById("setup-log-status");'
 	html[#html+1] = 'if(r.log&&r.log.length>_lastLogLen){'
@@ -233,17 +264,17 @@ act.cfgvalue = function(self, section)
 	html[#html+1] = 'clearInterval(_setupTimer);_setupTimer=null;'
 	html[#html+1] = 'ocSetupDone(false,logEl.textContent);'
 	html[#html+1] = '}'
-	html[#html+1] = '}catch(e){}'
+	html[#html+1] = '}catch(e){_setupPollErrors++;if(_setupPollErrors>=3)ocSetupPollingUnknown();}'
 	html[#html+1] = '});'
 	html[#html+1] = '},1500);'
 	html[#html+1] = '}'
 
 	-- 安装完成处理
 	html[#html+1] = 'function ocSetupDone(ok,log){'
-	html[#html+1] = 'var btn=document.getElementById("btn-setup");'
+	html[#html+1] = 'var btn=document.getElementById(_setupOperation==="core"?"btn-core-upgrade":"btn-setup");'
 	html[#html+1] = 'var statusEl=document.getElementById("setup-log-status");'
 	html[#html+1] = 'var resultEl=document.getElementById("setup-log-result");'
-	html[#html+1] = 'btn.disabled=false;btn.textContent="📦 安装运行环境";'
+	html[#html+1] = 'if(btn){btn.disabled=false;btn.textContent=_setupOperation==="core"?(ok?"⬆️ 核心升级完成":"⬆️ 重试核心升级"):"📦 安装运行环境";}'
 	html[#html+1] = 'resultEl.style.display="block";'
 	html[#html+1] = 'if(ok){'
 	html[#html+1] = 'statusEl.innerHTML="<span style=\\"color:#1a7f37;\\">✅ 安装完成</span>";'
@@ -307,7 +338,7 @@ act.cfgvalue = function(self, section)
 	html[#html+1] = 'function ocServiceCtl(action){'
 	html[#html+1] = 'var el=document.getElementById("action-result");'
 	html[#html+1] = 'el.innerHTML="<span style=\\"color:#999\\">⏳ 正在执行...</span>";'
-	html[#html+1] = '(new XHR()).get("' .. ctl_url .. '?action="+action,null,function(x){'
+	html[#html+1] = '(new XHR()).post("' .. ctl_url .. '?action="+action,{token:ocCsrfToken},function(x){'
 	html[#html+1] = 'try{var r=JSON.parse(x.responseText);'
 	html[#html+1] = 'if(r.status==="ok"){el.innerHTML="<span style=\\"color:green\\">✅ "+action+" 已完成</span>";}'
 	html[#html+1] = 'else{el.innerHTML="<span style=\\"color:red\\">❌ "+(r.message||"失败")+"</span>";}'
@@ -366,27 +397,59 @@ act.cfgvalue = function(self, section)
 	html[#html+1] = 'var verBadge="display:inline-block;padding:2px 8px;border-radius:4px;font-size:12px;font-family:SF Mono,Consolas,Menlo,monospace;background:#e1e4e8;color:#24292f;margin-left:4px;";'
 	-- 插件版本检查 (带渐变徽章)
 	html[#html+1] = 'if(r.plugin_current){'
-	html[#html+1] = 'if(r.plugin_has_update){msgs.push("<span style=\\""+badgeNew+"\\">🔌 有新版本</span> v"+r.plugin_current+" → <span style=\\""+verBadge+"\\">v"+r.plugin_latest+"</span>");}'
-	html[#html+1] = 'else if(r.plugin_latest){msgs.push("<span style=\\""+badgeLatest+"\\">✅ 已是最新</span> v"+r.plugin_current);}'
-	html[#html+1] = 'else{msgs.push("<span style=\\""+badgeUnknown+"\\">🔌 无法检查</span> v"+r.plugin_current);}'
+	html[#html+1] = 'if(r.plugin_has_update){msgs.push("<span style=\\""+badgeNew+"\\">🔌 插件有新版</span> v"+r.plugin_current+" → <span style=\\""+verBadge+"\\">v"+r.plugin_latest+"</span>");}'
+	html[#html+1] = 'else if(r.plugin_latest){msgs.push("<span style=\\""+badgeLatest+"\\">🔌 插件已是最新</span> v"+r.plugin_current);}'
+	html[#html+1] = 'else{msgs.push("<span style=\\""+badgeUnknown+"\\">🔌 插件无法检查</span> v"+r.plugin_current);}'
+	html[#html+1] = '}'
+	-- OpenClaw 核心版本检查
+	html[#html+1] = 'if(r.openclaw_current){'
+	html[#html+1] = 'if(r.openclaw_has_update){msgs.push("<span style=\\""+badgeNew+"\\">🦞 核心有新版</span> v"+r.openclaw_current+" → <span style=\\""+verBadge+"\\">v"+r.openclaw_latest+"</span>");}'
+	html[#html+1] = 'else if(r.openclaw_latest){msgs.push("<span style=\\""+badgeLatest+"\\">🦞 核心已是最新</span> v"+r.openclaw_current);}'
+	html[#html+1] = 'else{msgs.push("<span style=\\""+badgeUnknown+"\\">🦞 核心无法检查</span> v"+r.openclaw_current);}'
 	html[#html+1] = '}'
 	html[#html+1] = 'if(msgs.length===0)msgs.push("<span style=\\""+badgeUnknown+"\\">无法获取版本信息</span>");'
 	html[#html+1] = 'el.innerHTML=msgs.join("<br/>");'
-	-- 插件有更新时: 卡片式更新日志 + 操作按钮
-	html[#html+1] = 'if(r.plugin_has_update){'
+	-- 有任何更新时显示操作面板
+	html[#html+1] = 'if(r.plugin_has_update || r.openclaw_has_update){'
 	html[#html+1] = 'act.style.display="block";'
 	html[#html+1] = 'window._pluginLatestVer=r.plugin_latest;'
+	html[#html+1] = 'window._coreLatestVer=r.openclaw_latest;'
 	html[#html+1] = 'var notesHtml="";'
-	html[#html+1] = 'if(r.release_notes){'
+	html[#html+1] = 'if(r.plugin_has_update && r.release_notes){'
 	html[#html+1] = 'var rendered=ocMarkdownToHtml(r.release_notes);'
 	-- 卡片式容器: 圆角边框 + 微阴影 + 版本标题栏
-	html[#html+1] = 'notesHtml="<div style=\\"margin:12px 0;border:1px solid #d0d7de;border-radius:10px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.06);\\"><div style=\\"background:linear-gradient(135deg,#f6f8fa 0%,#ffffff 100%);padding:12px 16px;border-bottom:1px solid #d0d7de;display:flex;align-items:center;justify-content:space-between;\\"><span style=\\"font-size:14px;font-weight:600;color:#24292f;\\">📋 更新日志</span><span style=\\"display:inline-flex;align-items:center;padding:2px 10px;border-radius:12px;font-size:12px;font-weight:600;background:linear-gradient(135deg,#e3f2fd 0%,#bbdefb 100%);color:#1565c0;border:1px solid #64b5f6;\\">v"+r.plugin_latest+"</span></div><div style=\\"padding:16px;max-height:450px;overflow-y:auto;background:#fff;\\">"+rendered+"</div></div>";'
+	html[#html+1] = 'notesHtml="<div style=\\"margin:12px 0;border:1px solid #d0d7de;border-radius:10px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.06);\\"><div style=\\"background:linear-gradient(135deg,#f6f8fa 0%,#ffffff 100%);padding:12px 16px;border-bottom:1px solid #d0d7de;display:flex;align-items:center;justify-content:space-between;\\"><span style=\\"font-size:14px;font-weight:600;color:#24292f;\\">📋 插件更新日志</span><span style=\\"display:inline-flex;align-items:center;padding:2px 10px;border-radius:12px;font-size:12px;font-weight:600;background:linear-gradient(135deg,#e3f2fd 0%,#bbdefb 100%);color:#1565c0;border:1px solid #64b5f6;\\">v"+r.plugin_latest+"</span></div><div style=\\"padding:16px;max-height:450px;overflow-y:auto;background:#fff;\\">"+rendered+"</div></div>";'
 	html[#html+1] = '}'
-	-- 操作按钮区: 分组设计
-	html[#html+1] = 'act.innerHTML=notesHtml+"<div style=\\"margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;\\"><button class=\\"btn cbi-button cbi-button-apply\\" type=\\"button\\" onclick=\\"ocPluginUpgrade()\\" id=\\"btn-plugin-upgrade\\" style=\\"box-shadow:0 2px 4px rgba(0,0,0,0.1);\\">⬆️ 一键升级 v"+r.plugin_latest+"</button><a href=\\"https://github.com/10000ge10000/luci-app-openclaw/releases/latest\\" target=\\"_blank\\" rel=\\"noopener\\" class=\\"btn cbi-button cbi-button-action\\" style=\\"text-decoration:none;\\">📥 GitHub 下载</a></div>";'
+	-- 操作按钮区: 支持一键升级插件与一键升级核心
+	html[#html+1] = 'var actBtns="<div style=\\"margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;\\">";'
+	html[#html+1] = 'if(r.plugin_has_update){actBtns+="<button class=\\"btn cbi-button cbi-button-apply\\" type=\\"button\\" onclick=\\"ocPluginUpgrade()\\" id=\\"btn-plugin-upgrade\\" style=\\"box-shadow:0 2px 4px rgba(0,0,0,0.1);\\">⬆️ 一键升级插件 (v"+r.plugin_latest+")</button><a href=\\"https://github.com/10000ge10000/luci-app-openclaw/releases/latest\\" target=\\"_blank\\" rel=\\"noopener\\" class=\\"btn cbi-button cbi-button-action\\" style=\\"text-decoration:none;\\">📥 GitHub 下载</a>";}'
+	html[#html+1] = 'if(r.openclaw_has_update){actBtns+="<button class=\\"btn cbi-button cbi-button-apply\\" type=\\"button\\" onclick=\\"ocOpenclawCoreUpgrade()\\" id=\\"btn-core-upgrade\\" style=\\"background:#d97706;border-color:#b45309;color:#fff;box-shadow:0 2px 4px rgba(0,0,0,0.1);\\">⬆️ 一键升级 OpenClaw 核心 (v"+r.openclaw_latest+")</button>";}'
+	html[#html+1] = 'actBtns+="</div>";'
+	html[#html+1] = 'act.innerHTML=notesHtml+actBtns;'
 	html[#html+1] = '}'
 	html[#html+1] = '}catch(e){el.innerHTML="<span style=\\"color:red\\">❌ 检测失败</span>";}'
 	html[#html+1] = '});}'
+	html[#html+1] = 'function ocOpenclawCoreUpgrade(){'
+	html[#html+1] = '_setupOperation="core";'
+	html[#html+1] = 'var ver=window._coreLatestVer||"2026.9.1";'
+	html[#html+1] = 'if(!confirm("确定要将 OpenClaw 核心升级到 v"+ver+"？\\n\\n升级将执行安全事务：自动全量备份状态、SQLite 数据库预检与配置平滑迁移。"))return;'
+	html[#html+1] = 'var btn=document.getElementById("btn-core-upgrade");'
+	html[#html+1] = 'var panel=document.getElementById("setup-log-panel");'
+	html[#html+1] = 'var logEl=document.getElementById("setup-log-content");'
+	html[#html+1] = 'var titleEl=document.getElementById("setup-log-title");'
+	html[#html+1] = 'var statusEl=document.getElementById("setup-log-status");'
+	html[#html+1] = 'var resultEl=document.getElementById("setup-log-result");'
+	html[#html+1] = 'if(btn){btn.disabled=true;btn.textContent="⏳ 正在启动核心升级...";}'
+	html[#html+1] = 'panel.style.display="block";'
+	html[#html+1] = 'logEl.textContent="正在启动 OpenClaw 核心升级事务...\\n";'
+	html[#html+1] = 'titleEl.textContent="📋 OpenClaw 核心升级日志";'
+	html[#html+1] = 'statusEl.innerHTML="<span style=\\"color:#7aa2f7;\\">⏳ 核心升级中 (执行状态机事务)...</span>";'
+	html[#html+1] = 'resultEl.style.display="none";'
+	html[#html+1] = '(new XHR()).post("' .. service_ctl_url .. '",{action:"upgrade",version:ver,token:ocCsrfToken},function(x){'
+	html[#html+1] = 'var accepted=ocAcceptedResponse(x);'
+	html[#html+1] = 'if(accepted.ok){ocPollSetupLog();}else{ocSetupRequestRejected(btn,"⬆️ 重试核心升级",accepted.message);}'
+	html[#html+1] = '});'
+	html[#html+1] = '}'
 
 	-- ═══ 插件一键升级 ═══
 	html[#html+1] = 'var _pluginUpgradeTimer=null;'
@@ -407,9 +470,9 @@ act.cfgvalue = function(self, section)
 	html[#html+1] = 'titleEl.textContent="📋 插件升级日志";'
 	html[#html+1] = 'statusEl.innerHTML="<span style=\\"color:#7aa2f7;\\">⏳ 插件升级中...</span>";'
 	html[#html+1] = 'resultEl.style.display="none";'
-	html[#html+1] = '(new XHR()).get("' .. plugin_upgrade_url .. '?version="+encodeURIComponent(ver),null,function(x){'
-	html[#html+1] = 'try{JSON.parse(x.responseText);}catch(e){}'
-	html[#html+1] = 'ocPollPluginUpgradeLog();'
+	html[#html+1] = '(new XHR()).post("' .. plugin_upgrade_url .. '?version="+encodeURIComponent(ver),{token:ocCsrfToken},function(x){'
+	html[#html+1] = 'var accepted=ocAcceptedResponse(x);'
+	html[#html+1] = 'if(accepted.ok){ocPollPluginUpgradeLog();}else{if(btn){btn.disabled=false;btn.textContent="⬆️ 重试插件升级";}statusEl.textContent="❌ "+accepted.message;logEl.textContent+=accepted.message+"\\n";}'
 	html[#html+1] = '});'
 	html[#html+1] = '}'
 
@@ -443,9 +506,10 @@ act.cfgvalue = function(self, section)
 	html[#html+1] = '}'
 	html[#html+1] = '}catch(e){'
 	html[#html+1] = '_pluginPollErrors++;'
-	html[#html+1] = 'if(_pluginPollErrors>=8){'
+	html[#html+1] = 'if(_pluginPollErrors>=3){'
 	html[#html+1] = 'clearInterval(_pluginUpgradeTimer);_pluginUpgradeTimer=null;'
-	html[#html+1] = 'ocPluginUpgradeDone(true);'
+	html[#html+1] = 'var btn=document.getElementById("btn-plugin-upgrade");if(btn){btn.disabled=false;btn.textContent="⬆️ 重试插件升级";}'
+	html[#html+1] = 'statusEl.textContent="⚠️ 状态查询连续失败，请手动刷新确认；后台任务可能仍在运行。";'
 	html[#html+1] = '}'
 	html[#html+1] = '}'
 	html[#html+1] = '});'
@@ -481,7 +545,7 @@ act.cfgvalue = function(self, section)
 	html[#html+1] = 'var el=document.getElementById("action-result");'
 	html[#html+1] = 'btn.disabled=true;btn.textContent="⏳ 正在卸载...";'
 	html[#html+1] = 'el.innerHTML="<span style=\\"color:#999\\">正在停止服务并清理文件...</span>";'
-	html[#html+1] = '(new XHR()).get("' .. uninstall_url .. '",null,function(x){'
+	html[#html+1] = '(new XHR()).post("' .. uninstall_url .. '",{token:ocCsrfToken},function(x){'
 	html[#html+1] = 'btn.disabled=false;btn.textContent="🗑️ 卸载环境";'
 	html[#html+1] = 'try{var r=JSON.parse(x.responseText);'
 	html[#html+1] = 'if(r.status==="ok"){'
@@ -542,7 +606,7 @@ act.cfgvalue = function(self, section)
 	html[#html+1] = 'function ocLoadBackupList(){'
 	html[#html+1] = 'var el=document.getElementById("oc-backup-list");'
 	html[#html+1] = 'el.innerHTML="<div style=\\"color:#7aa2f7;font-size:12px;padding:8px;\\">⏳ 加载备份列表...</div>";'
-	html[#html+1] = '(new XHR()).get("' .. backup_url .. '?action=list",null,function(x){'
+	html[#html+1] = '(new XHR()).post("' .. backup_url .. '?action=list",{token:ocCsrfToken},function(x){'
 	html[#html+1] = 'try{var r=JSON.parse(x.responseText);'
 	html[#html+1] = 'if(r.status==="ok"&&r.backups&&r.backups.length>0){'
 	html[#html+1] = 'var h="<table style=\\"width:100%;border-collapse:collapse;font-size:12px;\\">";'
@@ -584,7 +648,7 @@ act.cfgvalue = function(self, section)
 	html[#html+1] = 'btnC.disabled=true;btnF.disabled=true;'
 	html[#html+1] = 'resEl.style.display="block";'
 	html[#html+1] = 'resEl.innerHTML="<div style=\\"color:#7aa2f7;font-size:12px;padding:8px;\\">⏳ 正在创建备份..."+(onlyConfig?"（仅配置）":"（完整备份，可能需要较长时间）")+"</div>";'
-	html[#html+1] = '(new XHR()).get("' .. backup_url .. '?action=create&only_config="+onlyConfig,null,function(x){'
+	html[#html+1] = '(new XHR()).post("' .. backup_url .. '?action=create&only_config="+onlyConfig,{token:ocCsrfToken},function(x){'
 	html[#html+1] = 'btnC.disabled=false;btnF.disabled=false;'
 	html[#html+1] = 'try{var r=JSON.parse(x.responseText);'
 	html[#html+1] = 'if(r.status==="ok"){'
@@ -603,7 +667,7 @@ act.cfgvalue = function(self, section)
 	html[#html+1] = 'var resEl=document.getElementById("oc-backup-result");'
 	html[#html+1] = 'resEl.style.display="block";'
 	html[#html+1] = 'resEl.innerHTML="<div style=\\"color:#7aa2f7;font-size:12px;padding:8px;\\">⏳ 正在恢复配置...</div>";'
-	html[#html+1] = '(new XHR()).get("' .. backup_url .. '?action=restore&file="+encodeURIComponent(filename),null,function(x){'
+	html[#html+1] = '(new XHR()).post("' .. backup_url .. '?action=restore&file="+encodeURIComponent(filename),{token:ocCsrfToken},function(x){'
 	html[#html+1] = 'try{var r=JSON.parse(x.responseText);'
 	html[#html+1] = 'if(r.status==="ok"){'
 	html[#html+1] = 'resEl.innerHTML="<div style=\\"border:1px solid #c6e9c9;background:#e6f7e9;padding:10px 14px;border-radius:6px;font-size:12px;\\">"+'
@@ -622,7 +686,7 @@ act.cfgvalue = function(self, section)
 	html[#html+1] = 'var resEl=document.getElementById("oc-backup-result");'
 	html[#html+1] = 'resEl.style.display="block";'
 	html[#html+1] = 'resEl.innerHTML="<div style=\\"color:#7aa2f7;font-size:12px;padding:8px;\\">⏳ 正在删除...</div>";'
-	html[#html+1] = '(new XHR()).get("' .. backup_url .. '?action=delete&file="+encodeURIComponent(filename),null,function(x){'
+	html[#html+1] = '(new XHR()).post("' .. backup_url .. '?action=delete&file="+encodeURIComponent(filename),{token:ocCsrfToken},function(x){'
 	html[#html+1] = 'try{var r=JSON.parse(x.responseText);'
 	html[#html+1] = 'if(r.status==="ok"){'
 	html[#html+1] = 'resEl.innerHTML="<div style=\\"border:1px solid #c6e9c9;background:#e6f7e9;padding:10px 14px;border-radius:6px;font-size:12px;\\">"+'

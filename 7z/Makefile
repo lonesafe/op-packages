@@ -2,11 +2,11 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=7z
 PKG_VERSION:=26.02
-PKG_RELEASE:=3
+PKG_RELEASE:=4
 
 PKG_SOURCE:=$(PKG_NAME)$(subst .,,$(PKG_VERSION))-src.tar.xz
 PKG_SOURCE_URL:=https://7-zip.org/a/
-PKG_HASH:=skip
+PKG_HASH:=cf967c98bca02a4b8b16375f441825a8e141362f14be1969bbec8e1ca0bff9dd
 
 PKG_MAINTAINER:=Tianling Shen <cnsztl@immortalwrt.org>
 PKG_LICENSE:=LGPL-2.1-or-later BSD-3-Clause unRAR

@@ -2,13 +2,13 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=linux-serial-test
 PKG_VERSION:=1
-PKG_RELEASE:=1
+PKG_RELEASE:=2
 
 PKG_SOURCE_PROTO:=git
 PKG_SOURCE_URL=https://github.com/cbrake/linux-serial-test.git
 PKG_SOURCE_DATE:=2024-01-15
 PKG_SOURCE_VERSION:=6a28493a29f7b941172bc58cf4fdabbf8109022f
-PKG_MIRROR_HASH:=skip
+PKG_MIRROR_HASH:=871624462a45f910d6811a70a1b2bfa3526aea8dd58c5e7a24a54fccaef15d47
 
 include $(INCLUDE_DIR)/package.mk
 

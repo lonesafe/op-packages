@@ -12,23 +12,23 @@ PKG_ARCH_LINKEASE:=$(ARCH)
 PKG_NAME:=linkease
 # use PKG_SOURCE_DATE instead of PKG_VERSION for compitable
 PKG_SOURCE_DATE:=1.7.5
-PKG_RELEASE:=10
+PKG_RELEASE:=11
 
 ARCH_HEXCODE:=
 ifeq ($(ARCH),x86_64)
 ARCH_HEXCODE=8664
-PKG_HASH:=skip
+PKG_HASH:=634d3e1a807119badf98ae58f3e6e9815dacc22a5be31080228998ee0de6addd
 else ifeq ($(ARCH),aarch64)
 ARCH_HEXCODE=aa64
-PKG_HASH:=skip
+PKG_HASH:=92d0c6f9d05a0ba283d03fef2b7f4675eee032c303e959b1e4198e12806510f9
 else ifeq ($(ARCH),arm)
 ARCH_HEXCODE=aa32
-PKG_HASH:=skip
+PKG_HASH:=2a91f404c3eb190a8a828b5e41913595901de54664de518f0430c5544d71a914
 else ifeq ($(ARCH),mipsel)
 ARCH_HEXCODE=1b0c
 endif
 
-PKG_SOURCE_VERSION:=3cdc853c91c55560e118f1f7e343d1ae0bd5e566
+PKG_SOURCE_VERSION:=4bb94bc5fe4da6d98dfcd730f40fe15f0d71ec4a
 PKG_SOURCE:=linkease-bin-$(PKG_SOURCE_DATE)-linux-$(PKG_ARCH_LINKEASE).tar.gz
 PKG_SOURCE_URL:=https://github.com/istoreos/istoreos-app-hub/releases/download/linkease-runtime-v$(PKG_SOURCE_DATE)/
 PKG_BUILD_DIR:=$(BUILD_DIR)/linkease-bin-$(PKG_SOURCE_DATE)-linux-$(PKG_ARCH_LINKEASE)

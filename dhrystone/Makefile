@@ -9,12 +9,12 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=dhrystone
 PKG_VERSION:=2.1
-PKG_RELEASE:=1
+PKG_RELEASE:=2
 
 PKG_SOURCE_PROTO:=git
 PKG_SOURCE_URL:=https://github.com/siasjack/dhrystone4OP.git
 PKG_SOURCE_VERSION:=cce98c52c3d8b2676ca68cab075c6e89fc9988d2
-PKG_MIRROR_HASH:=skip
+PKG_MIRROR_HASH:=a7b6e5d097f666cab52f5363aabb01c10b95593b19b8d551f537dcca116a7d3a
 
 MAKE_PATH:=src
 

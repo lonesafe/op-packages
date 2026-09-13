@@ -9,11 +9,11 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=zabbix-ssl
 PKG_VERSION:=5.0.8
-PKG_RELEASE:=1
+PKG_RELEASE:=3
 
 PKG_SOURCE:=zabbix-$(PKG_VERSION).tar.gz
 PKG_SOURCE_URL:=https://cdn.zabbix.com/zabbix/sources/stable/5.0/
-PKG_HASH:=skip
+PKG_HASH:=a6a61d2aec82210506f02e4d51594d28f2cb8d40e061fe487460334c6ba0e7e3
 
 PKG_BUILD_DIR=$(BUILD_DIR)/zabbix-$(PKG_VERSION)
 PKG_MAINTAINER:=Etienne CHAMPETIER <champetier.etienne@gmail.com>

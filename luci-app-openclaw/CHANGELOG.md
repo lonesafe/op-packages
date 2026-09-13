@@ -4,6 +4,219 @@
 
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)。
 
+## [2.2.3] - 2026-09-11
+
+本次发布适配 LuCI 深色/暗黑主题，修复状态面板、控制台、高级设置与微信插件页面在深色模式下浅色硬编码导致的背景不可见、对比度不足问题。
+
+### 修复与优化
+
+- **LuCI 深色模式适配 (#107)**：
+  - 状态面板（`status.htm`）：面板底色改为透明继承主题，边框与分隔线改用半透明中性色，表格斑马纹与内联代码块在深色/浅色主题下均保持可读；
+  - 控制台、高级设置、微信插件页面（`console/advanced/wechat.htm`）：页头标题与说明文字颜色改为继承主题色，移除硬编码浅色（`#333`/`#666`）；
+  - 状态面板动态值改用 `textContent` 与 CSS 类写入，移除硬编码内联样式，避免深色主题下内联颜色覆盖页面主题。
+
+## [2.2.2] - 2026-09-11
+
+本次发布修复 v2.2.1 设备配对和控制台访问改动中的残留错误，并收紧升级事务的前端状态判断。
+
+### 修复与安全加固
+
+- **修复设备批准假成功**：非零退出码不再被输出中的 `approved` 字样覆盖；批准后重新查询设备列表并以 `deviceId` 确认结果，无法确认时返回 `unconfirmed`。
+- **严格校验设备列表**：统一校验 `pending`、`paired` 和请求 ID 类型，异常 CLI JSON 返回稳定 `error_code`，空列表稳定编码为 `[]`，不再伪装为空列表、触发 Lua 500 或导致前端误报。
+- **统一设备 CLI 运行身份**：设备查询和批准使用 `openclaw` 用户、external supervisor 环境及 20 秒超时；CLI 错误输出经截断、ANSI 清理和敏感字段脱敏后返回。
+- **修复升级错误轮询**：核心安装、核心升级和插件升级仅在 HTTP 2xx 且后端返回 `status=ok` 后启动轮询；连续三次状态查询失败即停止轮询并提示后台状态待确认。
+- **修复控制台 URL 注入与凭据外传**：自定义 HTTPS 地址使用安全数据属性传值，拒绝用户信息段、控制字符、引号及非法端口；外部自定义地址不再自动携带 Gateway Token。
+- **明确附件访问路径**：HTTP LAN 页面明确提示 Secure Context 限制，并生成 SSH localhost 隧道命令；“新窗口直达”不再被描述为附件能力修复。
+- **增加行为回归测试**：新增设备 JSON/批准语义、控制台 URL 解析及渲染后升级 JavaScript 行为测试。
+- **保留升级配置**：IPK 智能合并补齐 `pty_token` 与兼容的 `console_url`，避免覆盖安装后终端令牌意外轮换。
+
+## [2.2.1] - 2026-09-10
+
+本次发布为紧急热修版本，修复基本设置页面渲染崩溃、一键升级无效、设备配对异常处理缺陷，并改善 Web 控制台安全上下文与图片附件支持。
+
+### 修复与优化
+
+- **修复基本设置页面崩溃与升级失效 (#106)**：
+  - 修复 `basic.lua` 中未定义 `service_ctl_url` 变量导致页面白屏崩溃的缺陷；
+  - 绑定正确的请求端点，确保「一键升级 OpenClaw 核心」能够正常向后台发起升级事务请求。
+- **修复设备配对错误处理与假成功语义 (#106)**：
+  - 控制器端严格校验 `devices list --json` 及 `devices approve` 的执行退出码与 JSON 解析结果，杜绝网关异常时伪装为 0 待配对成功；
+  - 前端界面区分语义：仅当实际批准设备数大于 0 时提示成功并重新载入控制台，无待配对时仅展示信息提示，杜绝死循环重新载入。
+- **改善 Web 控制台安全上下文与图片附件支持 (#105)**：
+  - 识别现代浏览器安全上下文限制（图片/附件与语音需 HTTPS 或 localhost），新增「访问条件提示（图片/附件与安全上下文）」面板及使用指引；
+  - 支持配置反代 HTTPS 控制台地址（`option console_url`），并提供「新窗口直达」入口避免 Mixed Content 限制。
+- **契约测试与健壮性加固**：
+  - 新增 `test_luci_basic_contract.sh`，在测试流水线中以 Lua 解释器真实执行 CBI 模型渲染，杜绝变量缺失；
+  - 强化设备配对测试与控制台接入测试断言。
+
+## [2.2.0] - 2026-09-06
+
+本次发布全面适配 OpenClaw 2026.9.1 最新稳定版基线，完成安全升级事务、外部 Supervisor 治理、微信插件 2.4.8 与废弃特性清理。
+
+### 新增与优化
+
+- **OpenClaw 2026.9.1 基线适配**：默认 OpenClaw 升级至 `2026.9.1`，Node.js 运行时基线升级至 `22.23.2`，微信插件升级至 `@tencent-weixin/openclaw-weixin@2.4.8`（兼容 openclaw >=2026.5.12）。
+- **安全升级事务机（Staging & Explicit Rollback）**：
+  - 杜绝原地破坏性 npm 覆写，升级采用独立 Staging 暂存目录提取与包契约校验（`openclaw-package-contract.js`），支持 npm lifecycle 白名单过滤。
+  - 新增 `openclaw-upgrade-state.sh`，在 `.luci-openclaw-upgrade/status.json` 中完整记录升级事务状态（`phase`、`target_version`、`backup_verified`、`migration_started`、`rollback_mode`、`error_code`）。
+  - 确立安全红线：迁移一旦开始，任何失败均进入 `recovery` 状态并保留 2026.9.1 候选与迁移状态，严禁旧代码自动覆写已迁移数据库，必须通过 `rollback-explicit` 进行受控的显式回滚。
+- **外部 Supervisor 治理**：
+  - 在 procd 守护进程、LuCI 运行时以及 CLI 执行环境中全面注入 `OPENCLAW_SUPERVISOR_MODE="external"` 与 `OPENCLAW_SERVICE_REPAIR_POLICY="external"`，禁止上游内部 supervisor 干预 OpenWrt procd 的进程与自愈生命周期。
+- **废弃补丁与弃用配置清理**：
+  - 彻底移除对旧版本 upstream dist 的历史猴子补丁（`patch_iframe_headers`、`patch_webchat_session_conflict`）。
+  - 彻底移除上游已废弃的配置项 `gateway.controlUi.dangerouslyDisableDeviceAuth` 及 `d.plugins.installs` 写入，全量契约测试均已锁定。
+- **微信插件运行时合约验证**：
+  - 微信插件升级至 `2.4.8`，废弃脆弱的纯文本正则匹配，改用官方 JSON 合约 `plugins inspect openclaw-weixin --runtime --json` 与 `plugins registry --refresh --json` 验证渠道健康度。
+- **前端体验与低负载轮询优化**：
+  - LuCI 状态页面轮询增加 `document.hidden` 检查与 `visibilitychange` 事件监听，后台标签页自动挂起轮询，切换回前台时即时触发刷新，降低 OpenWrt 路由器 CPU 负载。
+  - 安装弹窗明确标注 `v2026.9.1 (已验证版)` 与 `最新版 (未经验证)`，并在 openclaw-env 未就绪时优雅兜底。
+- **Web 控制台原生会话内嵌与自动探活**：
+  - Web 控制台页面原生内嵌 OpenClaw 官方 WebChat / Control UI 会话 iframe，携带 Gateway 鉴权令牌自动免密登录，支持一键全屏切换与会话就地刷新；
+  - 增加状态探活轮询机制，网关启动中时自动平滑重试并完成内嵌载入，无需手动 F5 刷新；增加 HTTPS 混杂内容安全指引。
+- **一键设备配对管理（Web 端与终端配置）**：
+  - 全面支持 OpenClaw 2026.9.1 新增的设备配对安全机制，在 Web 控制台与终端配置页增加待配对请求悬浮检测卡片与一键批准功能；
+  - 交互式终端与 Shell 菜单新增 `[p] 设备配对管理 / 一键批准设备配对`，支持批量或单独批准，免除手动复制复杂 ID 的门槛；
+  - 在 Web 界面与终端各处醒目标注安全风险提示，且控制器使用 `post()` + CSRF 保护，对客户端元数据做 HTML 转义杜绝存储型 XSS。
+- **配置管理模型菜单优化与终端重连加固**：
+  - 移除模型提供商顶级菜单中硬编码的具体过时模型名称，具体型号选择移交二级向导动态发现与精选预设；
+  - 修复终端配置点击重启后因连接代际竞争导致的“等待服务就绪... 5秒后重试”无限循环问题，引入序列锁与 Cookie 凭据注入，实现秒级就地重连。
+
+## [2.1.1] - 2026-08-27
+
+本次维护以 OpenClaw 2026.7.1-2 为基准，逐项核对配置写入与上游 schema 的一致性。
+当前适配版本已等于 npm `latest`，因此**未升级 OpenClaw 版本**，修的是项目自身
+与现行 schema 的既有偏离。
+
+> 版本号说明：`v2.1.0` 标签（2026-07-27）出自 `release/v2.1.0-openclaw-2026.6.33`
+> 分支，适配的是更旧的 OpenClaw 2026.6.33，与 main 的 2.0.12 语义倒挂。
+> 为避免版本号回退，本次直接发布 2.1.1 并明确适配 2026.7.1-2。
+
+### 修复配置丢失（严重）
+
+- **配置管理界面写入可能清空整份配置**：`readConfig()` 在 `JSON.parse` 失败时返回 `{}`，
+  调用方随后 `writeConfig()` 把空对象写回磁盘。实测一份仅多出尾随逗号的配置
+  （OpenClaw 自身的 JSON5 解析器可容忍），用户只改一个网关端口，文件即从 124 字节
+  （含 apiKey）变成 40 字节，`models.providers` 与 API Key 全部丢失。
+  现改为解析失败即中止写入，并给出 `doctor --fix` / `config validate` / `last-good` 恢复指引。
+- **服务启动时同样会清空配置**：`init.d` 的 `sync_uci_to_json()` 有同类缺陷，且位于
+  `start_service` 路径上自动执行，不需要用户操作。实测一次普通的
+  `/etc/init.d/openclaw start` 就会让 apiKey 与 `channels.openclaw-weixin` 消失。
+  现改为解析失败即跳过同步，配置原样保留。
+- 配置写入改为原子操作：写前备份（`.luci-pre-write`，不占用 OpenClaw 自己的 `.bak` 轮转链）
+  → 临时文件 → 回读校验 → `rename` 替换，并保留原文件权限位。
+
+### 修复配置类型与键名（严重）
+
+- **所有配置值都被写成字符串**：`json_set` 原实现"读取值并作为字符串保存"，
+  而上游严格校验类型，实测拒绝 `gateway.port: Invalid input`、
+  `acp.dispatch.enabled: Invalid input (allowed: true, false)`、
+  `channels.telegram.enabled: must be boolean`。现按 schema 类型表自动判定
+  number/boolean/string/json。注意 `init.d` 只在冷启动修正这些字段，而
+  `restart_gateway` 走 SIGUSR1 快速重载不经过修正——这正是"改完配置重启后网关起不来"的路径。
+- **日志级别设置从未生效**：`gateway.logLevel` 不在 schema 中
+  （`gateway.additionalProperties: false`），`config set` 直接报 `Unrecognized key`，
+  手写进文件则被静默忽略。改为正确键 `logging.level`，菜单补齐上游 7 档枚举
+  （silent/fatal/error/warn/info/debug/trace），并清理旧配置里的错误键。
+- **绑定地址提供了上游不接受的值**：`gateway.bind=all` 实测被拒
+  （允许 auto/lan/loopback/custom/tailnet）。菜单改用上游枚举，旧值 `all`
+  自动映射为 `custom` + `customBindHost=0.0.0.0`。
+- 修复一类"假成功"：写入失败时界面仍打印 ✅。`--set` 与端口/模式/ACP/绑定地址
+  菜单现在都检查返回码；端口另加 1–65535 校验；仅在 JSON 写入成功后才同步 UCI。
+
+### 修复功能不可达
+
+- **备份与重置菜单有三个选项打不开**：菜单打印 1–5，`case` 分支却只有
+  `1) 2) 3) c) d)`，导致「查看备份列表」「从最新备份恢复」「完全恢复出厂」
+  按提示操作只会得到"无效选择"，真正的逻辑挂在从不显示的 `c`/`d` 上。已修正键位。
+
+### 修复 Telegram 配对（issue #98）
+
+- 「Telegram 配对助手」调用的 `openclaw models auth login-telegram-bot` 在 2026.6+
+  已移除，实测报 `Too many arguments for this command`。改为对齐上游
+  `openclaw pairing list` / `pairing approve`，与 shell 侧早已正确实现的流程一致。
+  配对与 Bot Token 配置是两件不同的事，本次明确区分，不合并为同一入口。
+
+### 修复打包与 feeds 集成（issue #60）
+
+- OpenWrt 25.x 下 `Ignoring feed 'openclaw' - index missing`：不再依赖 `luci.mk`
+  的隐式 Package 生成，统一 `include package.mk` 并显式定义 `Package/...`。
+- Makefile 漏装交互式菜单：`oc-config-interactive.js` 与 `oc-menu-engine.js` 只在
+  build 脚本里被 `cp *.js` 带上，走 feeds/SDK 编译的包会缺这两个文件，此时
+  `can_use_interactive()` 静默回落到功能较少的传统菜单——用户看不到报错，
+  只会觉得界面与教程不一致。现三条打包路径清单一致。
+- 保留 `libstdcpp6` 依赖（issue #28：缺失会导致 Node.js 无法运行）。
+
+### AI Provider / Model 清单改造
+
+- **不再硬编码易过期的模型 ID**。用 OpenClaw 2026.7.1-2 实测核对，原菜单里
+  `openai/gpt-5.2`、`gpt-5-mini`、`gpt-4.1`、`o3`、`o4-mini`、
+  `claude-sonnet-4-20250514`、`claude-opus-4-20250514`、`claude-sonnet-4.5`、
+  `xai/grok-4`、`grok-3`、`deepseek/deepseek-r1`、`meta-llama/llama-4-maverick`、
+  `01-ai/Yi-1.5-34B-Chat-16K`、`Qwen/Qwen2.5-*`、`THUDM/glm-4-9b-chat`、
+  `github-copilot/gpt-4.1`、`gpt-4o` 等在上游 catalog 中均已不存在。
+- 改为三层架构：精选预设 `model-presets.json`（shell 与 JS 共读的唯一数据源，
+  14 provider / 44 模型，32 条 builtin 预设已逐条核对存在）→ 动态发现
+  `openclaw models list --provider <id>`（带 6s 超时，失败静默回落）→ 手动输入
+  （永久保留的兼容出口）。上游模型迭代时不必再改本插件。
+- SiliconFlow 非 OpenClaw 内置/官方插件 provider，无法用上游 catalog 核实模型 ID，
+  改为引导用户从官方模型广场复制当前 ID——与其留一份会腐坏的列表，不如给可靠来源。
+
+### 安全
+
+- **状态变更端点缺少 CSRF 保护**：`service_ctl`（启停服务）、`uninstall`（删除运行环境）、
+  `plugin_upgrade`（下载执行 .run）、`backup`（create/restore/delete）、
+  `get_token`（返回网关与 PTY 凭据）原为 `call()`，允许 GET 触发且不校验 token，
+  诱导已登录管理员访问一个链接即可卸载环境或读出凭据。现改为 `post()`，
+  前端 8 处调用同步改为带 CSRF token 的 POST。只读端点保持 `call()` 不变。
+- **Web PTY 头部过度开放**：移除 `Access-Control-Allow-Origin: *` 与
+  `X-Frame-Options: ALLOWALL`，CSP 从 `default-src *` 收紧到 `'self'`
+  （保留 `unsafe-inline`——页面确有内联块；去掉 `unsafe-eval`），
+  新增 `Referrer-Policy: no-referrer`。WebSocket token 校验未削弱。
+- **PTY token 泄漏**：页面原先把含 token 的 WebSocket URL 写进可见调试文本与 console。
+  现读取后立即用 `history.replaceState` 从地址栏移除，展示与日志一律用脱敏 URL。
+- **恢复 profile 隔离能力**：`openclaw-env` 生成的 CLI wrapper 无条件 export
+  `OPENCLAW_HOME` 等变量，把官方文档承诺的 per-instance 环境变量与
+  `openclaw --profile` 全部覆盖，导致无法按官方文档跑多实例网关、
+  也无法做隔离的配置写入测试。改为仅在调用方未提供时填默认值。
+
+### 测试
+
+- 新增测试 runner `tests/run_all.sh`，测试数从 7 项增至 16 项，全部通过。
+- 新增契约测试：配置写入安全、配置类型、菜单按键覆盖、打包清单一致性
+  （含真实构建 `.ipk` 并解包校验）、模型预设架构、Telegram 配对语义、
+  init.d 启动同步安全、LuCI CSRF、Web PTY 安全。
+- 上游 schema 关键字段类型固化为 `tests/fixtures/openclaw-schema-types.tsv`。
+- 每项契约测试均用变异测试反向验证过：故意退化实现后测试必须失败，
+  确保护栏不是"永远通过"的空壳。
+
+---
+
+## [2.0.12] - 2026-08-22
+
+### 适配 OpenClaw v2026.7.1-2
+
+- `OC_TESTED_VERSION` 更新为 `2026.7.1-2`（npm `latest` 稳定标签），稳定版安装走该版本号。
+- Node.js 最低要求从 `22.19.0` 提升到 `22.22.3`，对齐 OpenClaw 2026.7.x 的 `engines.node`；默认 Node 仍为 `22.23.0`（musl LTS），无需重新下载。
+- 微信插件维持 `@tencent-weixin/openclaw-weixin@2.4.6`（上游最新稳定版）。
+- 适配 2026.7.x 插件目录所有权安全检查：`doctor --fix`（init.d 版本迁移）与配置终端的 `doctor` 诊断改为以 `openclaw` 服务用户执行，避免 root 上下文把 openclaw 属主的微信插件判为 suspicious ownership 后自动清理 `plugins.allow` / `channels` 配置。
+- doctor 版本标记提取正则保留补丁后缀（`2026.7.1-2`），避免上游补丁版迭代时跳过配置迁移。
+- 修复 CI 中 `OC_TESTED_VERSION` 提取正则无法匹配带连字符版本号（如 `2026.7.1-2`）的问题。
+
+### 修复
+
+- 修复微信插件安装/登录最后一步必然失败的问题：启用插件的内置 JS 使用了 `path.dirname` 却未 `require('path')`，导致 `ReferenceError`（对应 #88、#96）。
+- 修复 LuCI 停止/重启网关时优雅停止命令失效的问题：裸 `openclaw gateway stop` 在 uhttpd 环境 PATH 不可达，改为调用安装目录 CLI wrapper 全路径（对应 #100）。
+- LuCI 侧安全根目录白名单回退实现与 `paths.lua` 对齐（补 `/openclaw`、`/srv/*/openclaw`、`/overlay/upper/opt/openclaw`）。
+- `/etc/config/openclaw` 补充 `pty_token` 字段声明，配置结构自文档化。
+
+### 优化
+
+- Node.js 下载增加 SHA256 完整性校验：官方 / unofficial-builds / npmmirror 镜像拉取同目录 `SHASUMS256.txt` 比对；自托管 `node-bins` 资产优先校验 `.sha256` 边车文件，旧资产无哈希时降级为体积检查并告警。
+- CI 构建流程新增契约测试步骤（`tests/` 全部 shell + lua 测试），版本断言不同步将直接阻断发布。
+- README 修正：移除目录结构中不存在的 `download_deps.sh`；Release 产物说明与 CI 实际行为对齐。
+
+---
+
 ## [2.0.11] - 2026-07-10
 
 ### 修复微信扫码后 Gateway 丢失插件

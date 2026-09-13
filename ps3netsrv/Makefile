@@ -6,11 +6,11 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=ps3netsrv
 PKG_VERSION:=20250803
-PKG_RELEASE:=2
+PKG_RELEASE:=3
 
 PKG_SOURCE:=$(PKG_NAME)-$(PKG_VERSION).tar.gz
 PKG_SOURCE_URL:=https://codeload.github.com/jhonathanc/ps3netsrv/tar.gz/$(PKG_VERSION)?
-PKG_HASH:=skip
+PKG_HASH:=ea516ff938b93898cee44ececb30a428adf4387ad66fc7e584bc6f90e59f4cb4
 
 PKG_LICENSE:=GPL-3.0-or-later
 PKG_LICENSE_FILES:=LICENSE.TXT

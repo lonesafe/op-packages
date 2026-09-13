@@ -6,31 +6,28 @@
 #   ./update-po.sh --check    change nothing; fail if the .pot is stale or a string is
 #                             untranslated. The CI gate.
 #
-# A missing translation CANNOT fail loudly — an uncompiled _() falls through to its English
-# msgid and nothing reports it (the popover said "Palette"/"Rounding"/"Cats" on a Russian
-# LuCI). Hence --check is a gate, not a suggestion.
+# A missing translation cannot fail loudly — an uncompiled _() falls through to its English msgid
+# and nothing reports it — so --check is a gate rather than a suggestion.
 #
-# THE DIRECTORY IS `po/`, which is what LUCI_LANGUAGES globs and what Weblate translates. It was
-# `i18n/` for a while so luci.mk would NOT emit a luci-i18n-footstrap-<lang> package per language
-# (issue #6: a self-updater resolving the theme by name took head -1 and installed the catalogue);
-# that updater is retired and owfeed builds the release as one artifact per format either way, so
-# the rename bought nothing and cost the catalogue its visibility to the translation platform.
+# The directory is `po/`, which is what LUCI_LANGUAGES globs and what Weblate translates. Naming it
+# `i18n/` stops luci.mk emitting a per-language package, which mattered while a self-updater
+# resolved the theme by name and took head -1 (issue #6); that updater is retired and owfeed builds
+# one artifact per format either way, so the rename only cost the catalogue its visibility to the
+# translation platform.
 #
-# Nothing here runs on the buildbot — luci.mk calls po2lmo itself. This needs perl + gettext
-# (xgettext, msgmerge, msgfmt), which the OpenWrt build does not.
+# Nothing here runs on the buildbot — luci.mk calls po2lmo itself. This needs perl and gettext,
+# which the OpenWrt build does not.
 #
-# The scanner is LuCI's OWN build/i18n-scan.pl, not a grep: it lexes a .ut (rewriting the
-# template into JS before xgettext) and covers the rpcd acl.d/*.json title. A grep for _('…')
-# would miss the ACL string and choke on any apostrophe.
+# The scanner is LuCI's OWN build/i18n-scan.pl rather than a grep: it lexes a .ut, rewriting the
+# template into JS before xgettext, and covers the rpcd acl.d/*.json title. A grep would miss the
+# ACL string and choke on any apostrophe.
 set -eu
 
 cd "$(dirname "$0")"
 
-# Pinned to a COMMIT, not `master`, and checksummed: a perl script we fetch over the network
-# and then EXECUTE, and the gate deciding whether the catalogue is complete. Off a moving
-# branch, the gate is whatever upstream pushed last. luci-upstream.pin is the single source of
-# the commit and both checksums (CI sources it too) — they were once written out separately
-# here and in the workflow, with nothing holding them together.
+# Pinned to a commit and checksummed: a perl script fetched over the network and then EXECUTED, and
+# the gate deciding whether the catalogue is complete. Off a moving branch, the gate is whatever
+# upstream pushed last. luci-upstream.pin is the single source of the commit and both checksums.
 . ./luci-upstream.pin
 SCANNER_URL="https://raw.githubusercontent.com/openwrt/luci/${LUCI_PIN}/build/i18n-scan.pl"
 SCANNER_SHA256="$I18N_SCAN_SHA256"
@@ -90,8 +87,10 @@ if [ "$CHECK" = 1 ]; then
 	fi
 
 	rc=0
+	n=0
 	for po in po/*/*.po; do
 		[ -e "$po" ] || continue
+		n=$((n + 1))
 		# an empty msgstr means the string renders in English for that language
 		missing="$(msgfmt --statistics -o /dev/null "$po" 2>&1 | grep -o '[0-9]* untranslated' || true)"
 		if [ -n "$missing" ]; then
@@ -100,7 +99,15 @@ if [ "$CHECK" = 1 ]; then
 		fi
 		msgfmt --check -o /dev/null "$po" || rc=1
 	done
-	[ "$rc" = 0 ] && echo "i18n: .pot current, every string translated"
+	# A tree with no po/*/*.po at all walks zero catalogues, sets rc=0 (nothing in the loop ever ran
+	# to set it otherwise) and printed "every string translated" — true of the empty set the same way
+	# it is true of vacuously anything, and indistinguishable in the output from a real, fully
+	# translated build. n=0 is the one case the loop cannot tell apart from success on its own.
+	[ "$n" -gt 0 ] || {
+		echo "update-po: no po/*/*.po found — nothing was checked, not everything is translated" >&2
+		exit 1
+	}
+	[ "$rc" = 0 ] && echo "i18n: .pot current, every string translated ($n catalogue(s))"
 	exit "$rc"
 fi
 

@@ -10,11 +10,11 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=minieap
 PKG_VERSION:=0.93
-PKG_RELEASE:=1
+PKG_RELEASE:=2
 
 PKG_SOURCE:=$(PKG_NAME)-$(PKG_VERSION).tar.gz
 PKG_SOURCE_URL:=https://codeload.github.com/updateing/minieap/tar.gz/v$(PKG_VERSION)?
-PKG_HASH:=skip
+PKG_HASH:=752cec83f453ab2b44503156e0a84a82c475b9a231f45d407b6b7eb75de60f68
 
 PKG_LICENSE:=GPL-3.0
 PKG_LICENSE_FILES:=LICENSE

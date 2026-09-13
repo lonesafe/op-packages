@@ -206,6 +206,132 @@ function parse_limits(raw)
 	return limits
 end
 
+-- Live per-subflow TCP metrics via "ss -tin" (no per-WAN "src <ip>" filter --
+-- one call for every established connection on the box, then each
+-- connection's local address is looked up against the endpoints list to
+-- attribute it to a WAN and pick up its id/backup/fullmesh flags). This
+-- mirrors the shell/awk field parsing in omr-metrics' 040-metrics
+-- post-tracking hook, reimplemented natively in Lua here so the Diagnostics
+-- page stays self-contained: no dependency on omr-metrics being installed,
+-- and always a live read rather than whatever omr-tracker last cached for a
+-- WAN that may not have cycled recently.
+--
+-- Known limitation: a connection is only attributed to a WAN if its local
+-- address matches a registered MPTCP endpoint. In practice every
+-- multipath-enabled interface gets one (multipath's "on"/"backup" hotplug
+-- path always registers an endpoint for it), so this only misses a WAN that
+-- somehow never got one -- which "wan_endpoint_status" below already flags
+-- as its own issue.
+local function tobps(s)
+	local v = tonumber((s or ""):match("^[%d%.]+")) or 0
+	if s:find("Gbps") then return math.floor(v * 1000000000)
+	elseif s:find("Mbps") then return math.floor(v * 1000000)
+	elseif s:find("[Kk]bps") then return math.floor(v * 1000)
+	end
+	return math.floor(v)
+end
+
+-- ss prints "ip:port", or "[v6addr]:port" for IPv6.
+local function split_hostport(s)
+	local ip, port = (s or ""):match("^(.-):(%d+)$")
+	if not ip then return s, nil end
+	return (ip:gsub("^%[", ""):gsub("%]$", "")), tonumber(port)
+end
+
+function parse_ss_subflows(raw, endpoints)
+	local by_addr = {}
+	for _, ep in ipairs(endpoints) do by_addr[ep.address] = ep end
+
+	local subflows = {}
+	local cur
+	for line in (raw or ""):gmatch("[^\n]+") do
+		local state, lhost, rhost = line:match("^(%S+)%s+%d+%s+%d+%s+(%S+)%s+(%S+)")
+		if state == "ESTAB" then
+			if cur then subflows[#subflows + 1] = cur end
+			cur = nil
+			local lip, lport = split_hostport(lhost)
+			local rip, rport = split_hostport(rhost)
+			local ep = by_addr[lip]
+			if ep then
+				cur = {
+					dev = ep.dev, endpoint_id = ep.id, backup = ep.backup,
+					local_ip = lip, local_port = lport,
+					remote_ip = rip, remote_port = rport,
+				}
+			end
+		elseif cur then
+			for token in line:gmatch("%S+") do
+				if token:match("^cwnd:") then cur.cwnd = tonumber(token:match(":(%d+)"))
+				elseif token:match("^ssthresh:") then cur.ssthresh = tonumber(token:match(":(%d+)"))
+				elseif token:match("^rtt:") then
+					local r, rv = token:match(":([%d%.]+)/([%d%.]+)")
+					cur.rtt = tonumber(r); cur.rttvar = tonumber(rv)
+				elseif token:match("^retrans:") then
+					local c, t = token:match(":(%d+)/(%d+)")
+					cur.retrans = tonumber(c); cur.retrans_total = tonumber(t)
+				elseif token:match("^bytes_sent:") then cur.bytes_sent = tonumber(token:match(":(%d+)"))
+				elseif token:match("^bytes_acked:") then cur.bytes_acked = tonumber(token:match(":(%d+)"))
+				elseif token:match("^bytes_retrans:") then cur.bytes_retrans = tonumber(token:match(":(%d+)"))
+				elseif token:match("^bytes_received:") then cur.bytes_received = tonumber(token:match(":(%d+)"))
+				elseif token:match("^minrtt:") then cur.min_rtt = tonumber(token:match(":([%d%.]+)"))
+				end
+			end
+			-- pacing_rate/delivery_rate are separate space-joined tokens
+			-- ("pacing_rate 6.4Mbps"), not "key:value" -- match on the whole
+			-- line instead of a single token.
+			local pr = line:match("pacing_rate%s+(%S+)")
+			if pr then cur.pacing_rate = tobps(pr) end
+			local dr = line:match("delivery_rate%s+(%S+)")
+			if dr then cur.delivery_rate = tobps(dr) end
+		end
+	end
+	if cur then subflows[#subflows + 1] = cur end
+	return subflows
+end
+
+-- Live per-subflow TCP metrics preferring omr-sockdiag -- a raw
+-- NETLINK_SOCK_DIAG/INET_DIAG query of the kernel's tcp_info straight off
+-- the socket (see the omr-sockdiag package) -- over parsing "ss -tin" text.
+-- Same preference order omr-metrics' 040-metrics post-tracking hook already
+-- uses for its own per-WAN subflow collection. omr-sockdiag already emits
+-- JSON with the field names this table already uses, so there is no text
+-- parsing left to do here at all, only the same WAN attribution
+-- parse_ss_subflows does above (a connection's local_ip matched against the
+-- endpoints list -- omr-sockdiag has no MPTCP awareness of its own, it only
+-- knows sockets).
+--
+-- Returns nil when the output is not usable, so the caller can fall back to
+-- parse_ss_subflows. omr-sockdiag itself prints "[]" both when no sockets
+-- match and when the kernel query cannot be opened; if endpoints exist, let
+-- the ss fallback disambiguate that case instead of hiding live subflows.
+function parse_sockdiag_subflows(raw, endpoints)
+	local ok, rows = pcall(jsonc.parse, raw or "")
+	if not ok or type(rows) ~= "table" then return nil end
+	if #rows == 0 and #endpoints > 0 then return nil end
+
+	local by_addr = {}
+	for _, ep in ipairs(endpoints) do by_addr[ep.address] = ep end
+
+	local subflows = {}
+	for _, row in ipairs(rows) do
+		local ep = by_addr[row.local_ip]
+		if ep then
+			subflows[#subflows + 1] = {
+				dev = ep.dev, endpoint_id = ep.id, backup = ep.backup,
+				local_ip = row.local_ip, local_port = row.local_port,
+				remote_ip = row.remote_ip, remote_port = row.remote_port,
+				cwnd = row.cwnd, ssthresh = row.ssthresh,
+				rtt = row.rtt, rttvar = row.rttvar, min_rtt = row.min_rtt,
+				retrans = row.retrans, retrans_total = row.retrans_total,
+				bytes_sent = row.bytes_sent, bytes_acked = row.bytes_acked,
+				bytes_retrans = row.bytes_retrans, bytes_received = row.bytes_received,
+				pacing_rate = row.pacing_rate, delivery_rate = row.delivery_rate,
+			}
+		end
+	end
+	return subflows
+end
+
 -- Per-WAN endpoint cross-check: for every interface the router considers
 -- multipath-enabled, is its device actually registered as an MPTCP
 -- endpoint? If not, that WAN can never carry an MPTCP subflow no matter
@@ -329,6 +455,20 @@ function build_issues(settings, counters, wans)
 			string.format("%d MPTCP data checksum error(s).", counters.DataCsumErr),
 			"Check that 'mptcp_checksum' matches on both the router and the VPS -- a mismatch (or a path " ..
 			"that corrupts data) triggers this.")
+	end
+
+	-- RcvPruned counts data the kernel already received on an MPTCP subflow
+	-- but then had to drop from the receive queue under socket memory
+	-- pressure -- unlike the other counters here, this points at a local
+	-- resource problem on this router (or the VPS, if it's the one pruning),
+	-- not the network path: the data arrived fine and was thrown away anyway.
+	if (counters.RcvPruned or 0) > 0 then
+		add_issue(issues, "warning", "mptcp_rcv_pruned",
+			string.format("%d segment(s) pruned from an MPTCP receive queue (memory pressure).", counters.RcvPruned),
+			"Data that was already received had to be dropped because the socket ran out of receive buffer " ..
+			"space -- a local resource problem, not a network issue. Usually means something is reading from " ..
+			"the proxied connection too slowly (a slow/blocked application) or overall memory is tight. If " ..
+			"this keeps climbing, check free memory and whether any proxy process is stalled.")
 	end
 
 	-- Split by direction, not just summed: which side is doing the closing
@@ -707,7 +847,13 @@ local methods = {
 			local iface     = args.iface or ""
 			local interface = get_device(iface)
 			local server    = uci:get("shadowsocks-libev", "sss0", "server") or ""
-			if server == "" then return { output = "" } end
+			-- Placeholders the shadowsocks config ships until a VPS is set
+			-- (127.0.0.1 now, 192.168.1.3 in older releases): tracing to them
+			-- would report a path that has nothing to do with the proxy.
+			if server == "" or server == "127.0.0.1" or server == "::1"
+			   or server == "192.168.1.3" then
+				return { output = "" }
+			end
 			local cmd
 			if interface == "" then
 				cmd = "tracebox -s /usr/share/tracebox/omr-mptcp-trace.lua " .. server
@@ -736,6 +882,20 @@ local methods = {
 				established_count = established_count + 1
 			end
 
+			-- Attribute each subflow's device to its UCI interface name
+			-- (endpoints only carry the device, e.g. "eth1", not "wan1").
+			local dev_to_name = {}
+			for _, w in ipairs(wans) do
+				if w.device ~= "" then dev_to_name[w.device] = w.name end
+			end
+			local subflows = parse_sockdiag_subflows(exec_output("omr-sockdiag 2>/dev/null"), endpoints)
+			if not subflows then
+				subflows = parse_ss_subflows(exec_output("ss -tin 2>/dev/null"), endpoints)
+			end
+			for _, sf in ipairs(subflows) do
+				sf.wan = dev_to_name[sf.dev] or sf.dev
+			end
+
 			return {
 				settings          = settings,
 				counters          = counters,
@@ -744,6 +904,7 @@ local methods = {
 				wans              = wans,
 				issues            = issues,
 				established_count = established_count,
+				subflows          = subflows,
 			}
 		end
 	},

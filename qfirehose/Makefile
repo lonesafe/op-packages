@@ -2,11 +2,11 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=qfirehose
 PKG_VERSION:=1.4.9
-PKG_RELEASE:=1
+PKG_RELEASE:=2
 
 PKG_SOURCE:=$(PKG_NAME)-$(PKG_VERSION).tar.gz
 PKG_SOURCE_URL:=https://codeload.github.com/nippynetworks/qfirehose/tar.gz/$(PKG_VERSION)?
-PKG_HASH:=skip
+PKG_HASH:=b7c04f9356823c6ee0f4ca152e8fd2015f34b95490cea68461a060993befadef
 
 PKG_MAINTAINER:=Oskari Rauta <oskari.rauta@gmail.com>
 PKG_LICENSE:=

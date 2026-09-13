@@ -37,7 +37,7 @@ function index()
 	entry({"admin", "services", appname, "settings"}, cbi(appname .. "/client/global"), _("Basic Settings"), 1).dependent = true
 	entry({"admin", "services", appname, "node_list"}, cbi(appname .. "/client/node_list"), _("Node List"), 2).dependent = true
 	entry({"admin", "services", appname, "node_subscribe"}, cbi(appname .. "/client/node_subscribe"), _("Node Subscribe"), 3).dependent = true
-	entry({"admin", "services", appname, "other"}, cbi(appname .. "/client/other", {autoapply = true}), _("Other Settings"), 92).leaf = true
+	entry({"admin", "services", appname, "other"}, cbi(appname .. "/client/other"), _("Other Settings"), 92).leaf = true
 	if nixio.fs.access("/usr/sbin/haproxy") then
 		entry({"admin", "services", appname, "haproxy"}, cbi(appname .. "/client/haproxy"), _("Load Balancing"), 93).leaf = true
 	end
@@ -72,7 +72,6 @@ function index()
 	entry({"admin", "services", appname, "get_now_use_node"}, call("get_now_use_node")).leaf = true
 	entry({"admin", "services", appname, "get_redir_log"}, call("get_redir_log")).leaf = true
 	entry({"admin", "services", appname, "get_socks_log"}, call("get_socks_log")).leaf = true
-	entry({"admin", "services", appname, "get_acl_log"}, call("get_acl_log")).leaf = true
 	entry({"admin", "services", appname, "get_log"}, call("get_log")).leaf = true
 	entry({"admin", "services", appname, "clear_log"}, call("clear_log")).leaf = true
 	entry({"admin", "services", appname, "index_status"}, call("index_status")).leaf = true
@@ -304,10 +303,9 @@ end
 
 function get_redir_log()
 	local id = http.formvalue("id")
-	local name = http.formvalue("name")
-	local file_path = api.TMP_PATH .. "/acl/" .. id .. "/" .. name .. ".log"
+	local file_path = api.TMP_PATH .. "/acl/" .. id .. ".log"
 	if nixio.fs.access(file_path) then
-		local content = luci.sys.exec("tail -n 19999 '" .. file_path .. "'")
+		local content = luci.sys.exec("tail -n 5000 '" .. file_path .. "'")
 		content = content:gsub("\n", "<br />")
 		http.write(content)
 	else
@@ -327,18 +325,6 @@ function get_socks_log()
 	end
 end
 
-function get_acl_log()
-	local id = http.formvalue("id")
-	local path = api.TMP_PATH .. "/acl/" .. id .. "/node.log"
-	if nixio.fs.access(path) then
-		local content = luci.sys.exec("tail -n 5000 '" .. path .. "'")
-		content = content:gsub("\n", "<br />")
-		http.write(content)
-	else
-		http.write(string.format("<script>alert('%s');window.close();</script>", i18n.translate("Not enabled log")))
-	end
-end
-
 function get_log()
 	-- luci.sys.exec("[ -f /tmp/log/passwall2.log ] && sed '1!G;h;$!d' /tmp/log/passwall2.log > /tmp/log/passwall2_show.log")
 	http.write(luci.sys.exec("[ -f '/tmp/log/passwall2.log' ] && cat /tmp/log/passwall2.log"))
@@ -350,7 +336,7 @@ end
 
 function index_status()
 	local e = {}
-	e["global_status"] = luci.sys.call("/bin/busybox top -bn1 | grep -v 'grep' | grep '%s/bin/' | grep 'default' | grep 'global' >/dev/null" % api.TMP_PATH) == 0
+	e["global_status"] = luci.sys.call("/bin/busybox top -bn1 | grep -v 'grep' | grep '%s/bin/' | grep '/acl_default\\.json' >/dev/null" % api.TMP_PATH) == 0
 	http_write_json(e)
 end
 
@@ -457,7 +443,15 @@ function add_node()
 		uci_set(uid, "group", group)
 	end
 
-	uci_set(uid, "type", "Xray")
+	if api.finded_com("sing-box") then
+		uci_set(uid, "type", "sing-box")
+	elseif api.finded_com("xray") then
+		uci_set(uid, "type", "Xray")
+	elseif api.is_finded("sslocal") then
+		uci_set(uid, "type", "SS-Rust")
+	elseif api.is_finded("ssr-local") then
+		uci_set(uid, "type", "SSR")
+	end
 
 	if redirect == "1" then
 		uci_save()
@@ -699,6 +693,8 @@ function rollback_rules()
 	local geo_dir = (uci_get("@global_rules[0]", "v2ray_location_asset") or "/usr/share/v2ray/")
 	fs.move(bak_dir .. arg_type .. ".dat", geo_dir .. arg_type .. ".dat")
 	fs.rmdir(bak_dir)
+	uci_set("@global[0]", "flush_set", "1")
+	uci_save(true)
 	http_write_json_ok()
 end
 
@@ -865,7 +861,7 @@ function geo_view()
 		return
 	end
 	local function get_rules(str, type)
-		local rules_id = {}
+		local rules = {}
 		uci_foreach("shunt_rules", function(s)
 			local list
 			if type == "geoip" then list = s.ip_list else list = s.domain_list end
@@ -874,14 +870,18 @@ function geo_view()
 					local prefix, main = line:match("^(.-):(.*)")
 					if not main then main = line end
 					if type == "geoip" and (api.datatypes.ipaddr(str) or api.datatypes.ip6addr(str)) then
-						if main:find(str, 1, true) then rules_id[#rules_id + 1] = s[".name"] end
+						if main:find(str, 1, true) then
+							table.insert(rules, {id = s[".name"], group = s.group or i18n.translate("default")})
+						end
 					else
-						if main == str then rules_id[#rules_id + 1] = s[".name"] end
+						if main == str then
+							table.insert(rules, {id = s[".name"], group = s.group or i18n.translate("default")})
+						end
 					end
 				end
 			end
 		end)
-		return rules_id
+		return rules
 	end
 	local geo_dir = (uci_get("@global_rules[0]", "v2ray_location_asset") or "/usr/share/v2ray/"):match("^(.*)/")
 	local geosite_path = geo_dir .. "/geosite.dat"
@@ -902,11 +902,17 @@ function geo_view()
 			for line in geo_string:gmatch("([^\n]+)") do
 				lines[#lines + 1] = geo_type .. ":" .. line
 				for _, r in ipairs(get_rules(line, geo_type) or {}) do
-					if not seen[r] then seen[r] = true; rules[#rules + 1] = r end
+					if not seen[r.id] then
+						seen[r.id] = true
+						rules[#rules + 1] = string.format("[%s]%s", r.group, r.id)
+					end
 				end
 			end
 			for _, r in ipairs(get_rules(value, geo_type) or {}) do
-				if not seen[r] then seen[r] = true; rules[#rules + 1] = r end
+				if not seen[r.id] then
+					seen[r.id] = true
+					rules[#rules + 1] = string.format("[%s]%s", r.group, r.id)
+				end
 			end
 			geo_string = table.concat(lines, "\n")
 			if #rules > 0 then

@@ -3,55 +3,74 @@
 #
 #   ./mangle-tokens.sh <cascade.css> <reserved-source-dir>...
 #
-# Run from the package Makefile over $(PKG_BUILD_DIR) only — NEVER over a dev build. The names are
-# 16.6% of the sheet (22586 B over 1824 occurrences, 137 distinct) and mean nothing to a browser;
-# this is the same trade terser already makes for the JS, where top-level identifiers are mangled
-# because a LuCI resource file is function-scoped. Measured: 135655 -> 123935, i.e. -11.7 KB, and
-# uhttpd serves /www with no compression, so those are wire bytes on every cold load as well as
-# flash bytes.
+# Run from the package Makefile over $(PKG_BUILD_DIR) only, never over a dev build. The names are
+# 16.6% of the sheet and mean nothing to a browser; this is the same trade terser makes for the JS.
+# Measured: 135655 -> 123935 bytes, and uhttpd serves /www with no compression, so those are wire
+# bytes on every cold load as well as flash bytes.
 #
-# WHY IT IS SAFE, and each clause is a thing that was checked rather than assumed:
+# Why it is safe, each clause checked rather than assumed:
 #   * `--fs-*` is the PRIVATE tier. The outbound contract with third-party apps is the `--*-color-*`
 #     export tier, a different prefix, and it is not touched. Verified on the router: no installed
 #     luci-app reads a `--fs-` name.
-#   * The RESERVED set is DERIVED, not listed: every `--fs-` name that appears in the theme's JS or
-#     in a .ut template crosses a seam (fs-prefs.js writes `--fs-tint`, head.ut's pre-paint writes
-#     `--fs-radius-base`, fs-chrome.js reads `--fs-sidebar-w` …) and keeps its name. 35 of 137 today.
-#     A new one cannot be forgotten, because nothing here names them.
-#   * Point the dirs at the SOURCE tree, not at $(PKG_BUILD_DIR). In CI the build tree's JS has
-#     already been through terser and its comments are gone, so five names that only appear in a
-#     comment stopped being reserved — the same source produced a different sheet depending on who
-#     built it (measured at the time: 10 reserved via CI against 15 via a plain SDK build, of a
-#     smaller reserved set than today's 35). Reading the source over-reserves by
-#     about a kilobyte, and over-reserving is the direction that cannot break anything.
-#   * The scan is STRING-AWARE and reads the WHOLE identifier before deciding. A prefix match would
-#     be a silent corruption: `--fs-space-2` is a prefix of `--fs-space-2-5`.
-#   * The short names are `--a`…`--z`, `--A`…`--Z`, then `--aa`… . The shortest custom property
-#     otherwise present in this sheet is 5 characters (`--box`), so a collision is impossible;
-#     the script re-checks that instead of trusting it.
+#   * The RESERVED set is DERIVED, not listed: every `--fs-` name appearing in the theme's JS or in
+#     a .ut template crosses a seam and keeps its name, so a new one cannot be forgotten.
+#   * Point the dirs at the SOURCE tree, not at $(PKG_BUILD_DIR): in CI the build tree's JS has
+#     already been through terser and its comments are gone, so a name that only appears in a
+#     comment stops being reserved and the same source produces a different sheet depending on who
+#     built it. Reading the source over-reserves by about a kilobyte, which is the direction that
+#     cannot break anything.
+#   * The scan is string-aware and reads the WHOLE identifier before deciding: a prefix match would
+#     be a silent corruption, `--fs-space-2` being a prefix of `--fs-space-2-5`.
+#   * The short names are `--a`…`--z`, `--A`…`--Z`, then `--aa`…. The shortest custom property
+#     otherwise present is 5 characters, so a collision is impossible; the script re-checks that
+#     rather than trusting it.
 #
 # What it costs: the SHIPPED sheet is unreadable when debugging on a router. Everything that reads
-# the theme's own names — dev-sync.sh, galdiff.py, the a11y gate, docs/gallery.html (4 references)
-# and docs/devkit (29) — runs against an unmangled build, which is why this is a package-build step
+# the theme's own names runs against an unmangled build, which is why this is a package-build step
 # and not part of build-css.sh. Verify a change here with cssdiff.py, mangled against plain.
 set -e
 
 CSS="${1:-}"
 [ -n "$CSS" ] && [ -f "$CSS" ] || { echo "usage: mangle-tokens.sh <cascade.css> <dir>..." >&2; exit 1; }
 shift
+# --rewrite <dir>… : the seam names are mangled TOO, and the same map is applied to the JS and
+# templates in those directories. Without it they are reserved, which is the safe default and what
+# an SDK build (no second pass to rewrite) needs.
+#
+# The seam is safe to rename only because every `--fs-` reference on the far side is a WHOLE string
+# literal — `setProperty('--fs-accent', …)`, never `'--fs-' + role`. Checked across all 89 sites;
+# if one is ever composed, this flag renames the CSS and the JS keeps asking for a name that no
+# longer exists, silently. The 36 seam names cost 8,574 B in the sheet, `--fs-accent` alone 1,452.
+REWRITE=""
+RESERVE_DIRS=""
+REWRITE_DIRS=""
+seen=""
+for a in "$@"; do
+	if [ "$a" = "--rewrite" ]; then seen=1; REWRITE=1; continue; fi
+	if [ -n "$seen" ]; then REWRITE_DIRS="$REWRITE_DIRS $a"; else RESERVE_DIRS="$RESERVE_DIRS $a"; fi
+done
+# shellcheck disable=SC2086 -- the dirs are ours, and a path with a space would already have broken
+# every other loop in this package's build
+set -- $RESERVE_DIRS
+
 [ $# -gt 0 ] || { echo "mangle-tokens: no reserved-source dir given" >&2; exit 1; }
 
 RES="$CSS.reserved.$$"
 MAP="$CSS.map.$$"
-trap 'rm -f "$RES" "$MAP" "$CSS.tmp.$$"' EXIT
+trap 'rm -f "$RES" "$MAP" "$MAP.ord" "$CSS.tmp.$$"' EXIT
 
-# every --fs- name mentioned anywhere in the JS or the templates keeps its name
-for d in "$@"; do
-	[ -d "$d" ] || { echo "mangle-tokens: $d is not a directory" >&2; exit 1; }
-	find "$d" -type f \( -name '*.js' -o -name '*.ut' \) -exec cat {} +
-done | grep -oE -- '--fs-[a-z0-9-]+' | sort -u > "$RES"
+if [ -n "$REWRITE" ]; then
+	# nothing is reserved: every name is renamed here and in the far side together
+	: > "$RES"
+else
+	# every --fs- name mentioned anywhere in the JS or the templates keeps its name
+	for d in "$@"; do
+		[ -d "$d" ] || { echo "mangle-tokens: $d is not a directory" >&2; exit 1; }
+		find "$d" -type f \( -name '*.js' -o -name '*.ut' \) -exec cat {} +
+	done | grep -oE -- '--fs-[a-z0-9-]+' | sort -u > "$RES"
 
-[ -s "$RES" ] || { echo "mangle-tokens: reserved set came out EMPTY — refusing (a seam name would be renamed and the theme would break silently)" >&2; exit 1; }
+	[ -s "$RES" ] || { echo "mangle-tokens: reserved set came out EMPTY — refusing (a seam name would be renamed and the theme would break silently)" >&2; exit 1; }
+fi
 
 awk -v RESFILE="$RES" -v MAPFILE="$MAP" '
 	function isname(c) { return (c ~ /[A-Za-z0-9_-]/) }
@@ -128,3 +147,34 @@ before=$(wc -c < "$CSS")
 mv "$CSS.tmp.$$" "$CSS"
 after=$(wc -c < "$CSS")
 echo "mangle-tokens: $before -> $after bytes (-$((before - after))), $(wc -l < "$RES") name(s) reserved"
+
+# ---- the far side of the seam, renamed with the same map ----
+if [ -n "$REWRITE" ]; then
+	[ -s "$MAP" ] || { echo "mangle-tokens: --rewrite asked for, but the map is empty" >&2; exit 1; }
+	# NEVER the checkout. This rewrites files in place, so a target under the directory this script
+	# itself lives in is the source tree, and renaming the seam there destroys it — measured the
+	# hard way: a mistake in the argument split sent $SRC here instead of $STAGE and rewrote eight
+	# shipped modules and a template before anything noticed.
+	SELF_DIR=$(cd "$(dirname "$0")" && pwd -P)
+	for d in $REWRITE_DIRS; do
+		abs=$(cd "$d" 2>/dev/null && pwd -P) || { echo "mangle-tokens: --rewrite target $d is not a directory" >&2; exit 1; }
+		case "$abs/" in
+			"$SELF_DIR"/*) echo "mangle-tokens: --rewrite target $d is inside the source tree ($SELF_DIR) — refusing, this rewrites in place" >&2; exit 1 ;;
+		esac
+	done
+	# longest first, or `--fs-accent` would rewrite the head of `--fs-accent-h`
+	awk '{ print $1, $3 }' "$MAP" | awk '{ print length($1), $0 }' | sort -rn | cut -d" " -f2- > "$MAP.ord"
+	touched=0
+	for d in $REWRITE_DIRS; do
+		[ -d "$d" ] || { echo "mangle-tokens: --rewrite target $d is not a directory" >&2; exit 1; }
+		for f in $(find "$d" -type f \( -name '*.js' -o -name '*.ut' \)); do
+			awk -v MAPF="$MAP.ord" '
+				BEGIN { while ((getline l < MAPF) > 0) { split(l, a, " "); from[++k] = a[1]; to[k] = a[2] } }
+				{ for (x = 1; x <= k; x++) gsub(from[x], to[x]); print }
+			' "$f" > "$f.tmp$$" && mv "$f.tmp$$" "$f"
+			touched=$((touched + 1))
+		done
+	done
+	rm -f "$MAP.ord"
+	echo "mangle-tokens: seam renamed in $touched file(s)"
+fi

@@ -608,6 +608,10 @@ prepare_clash_runtime_config() {
 	local dns_mode
 	local client_policy_stats
 	local client_rules
+	local enable_fake_ip
+	local socks5_auth
+	local socks5_user
+	local socks5_pass
 
 	cache_file="$(get_clash_cache_file "$sid")"
 	workdir="$(get_clash_workdir "$sid")"
@@ -623,6 +627,7 @@ prepare_clash_runtime_config() {
 	dns_mode="$(uci_get_by_type global pdnsd_enable 0)"
 	client_policy_stats=""
 	client_rules=0
+	enable_fake_ip="$(uci_get_by_type server_subscribe enable_fake_ip "")"
 
 	[ -s "$cache_file" ] || return 1
 
@@ -640,17 +645,53 @@ prepare_clash_runtime_config() {
 		routing-mark: $CLASH_OUTBOUND_MARK
 		profile:
 		  store-selected: true
+		  store-fake-ip: true
 		tun:
 		  enable: false
-		dns:
-		  enable: $( [ "$dns_mode" = "7" ] && echo "true" || echo "false" )
-		  enhanced-mode: redir-host
-		  listen: 127.0.0.1:$dns_port
-		  ipv6: $( [ "$dns_ipv4_only" = "1" ] && echo "false" || echo "true" )
 	EOF
+
+	# 根据 dns_mode 添加不同的 dns 配置
+	if [ "$dns_mode" = "7" ]; then
+		# 根据 enable_fake_ip 决定 enhanced-mode
+		if [ "$enable_fake_ip" = "1" ]; then
+			ENHANCED_MODE="fake-ip"
+		else
+			ENHANCED_MODE="redir-host"
+		fi
+		cat >> "$overlay_file" <<-EOF
+			dns:
+			  enable: true
+			  enhanced-mode: $ENHANCED_MODE
+			  listen: 127.0.0.1:$dns_port
+			  ipv6: $( [ "$dns_ipv4_only" = "1" ] && echo "false" || echo "true" )
+		EOF
+	else
+		cat >> "$overlay_file" <<-EOF
+			dns:
+			  enable: false
+		EOF
+	fi
 
 	if [ -n "$socks_port" ] && [ "$socks_port" != "0" ]; then
 		echo "socks-port: $socks_port" >>"$overlay_file"
+
+		socks5_auth="$(uci_get_by_type socks5_proxy socks5_auth noauth)"
+		socks5_user="$(uci_get_by_type socks5_proxy socks5_user "")"
+		socks5_pass="$(uci_get_by_type socks5_proxy socks5_pass "")"
+
+		if [ "$socks5_auth" = "password" ]; then
+			if [ -z "$socks5_user" ] || [ -z "$socks5_pass" ]; then
+				echolog "警告：SOCKS5 代理未完整配置用户名或密码，已自动降级为无认证模式 (noauth)。"
+				socks5_auth="noauth"
+			fi
+		fi
+
+		if [ "$socks5_auth" = "password" ]; then
+			cat >>"$overlay_file" <<-EOF
+				authentication:
+				  - "$socks5_user:$socks5_pass"
+			EOF
+		fi
 	fi
 
 	merge_stats="$(/usr/bin/lua "$CLASH_YAML_HELPER" merge "$raw_file" "$overlay_file" "$runtime_file" 2>/dev/null)" || return 1
@@ -1230,14 +1271,24 @@ start_dns() {
 	ssrplus_dns="$(uci_get_by_type global pdnsd_enable 0)"
 	global_server_type="$(uci_get_by_name "$GLOBAL_SERVER" type)"
 	builtin_dns_enabled=0
-	dnsserver="$(uci_get_by_type global tunnel_forward 8.8.4.4:53)"
 
 	if [ "$ssrplus_dns" = "5" ]; then
 		ssrplus_dns="$(force_dns2tcp_fallback "旧版 DNSPROXY 模式已移除")" || return 1
 		uci_set_by_type global pdnsd_enable "$ssrplus_dns"
-	elif [ "$ssrplus_dns" = "6" ]; then
-		dnsserver="$(uci_get_by_type global chinadns_ng_tunnel_forward 8.8.4.4:53)"
 	fi
+	case "$ssrplus_dns" in
+		1)
+			dnsserver="$(uci_get_by_type global dns2tcp_tunnel_forward 8.8.4.4:53)"
+		;;
+		6)
+			dnsserver="$(uci_get_by_type global chinadns_ng_tunnel_forward 8.8.4.4:53)"
+		;;
+		7)
+			dnsserver="$(uci_get_by_type global tunnel_forward 8.8.4.4:53)"
+		;;
+		*)
+			;;
+	esac
 	run_mode="$(normalize_run_mode)"
 
 	if [ "$ssrplus_dns" = "4" ] && ! is_finded "mosdns"; then
@@ -1257,7 +1308,7 @@ start_dns() {
 	if [ "$builtin_dns_enabled" = "1" ]; then
 		pdnsd_enable_flag=7
 	elif [ "$ssrplus_dns" != "0" ]; then
-		if [ "$HAS_IPSET" -eq 1 ]; then
+		if [ "$USE_TABLES" = "iptables" ]; then
 			if [ -n "$dnsserver" ]; then
 				add_dns_into_ipset "$run_mode" "$dnsserver"
 			fi
@@ -1273,7 +1324,7 @@ start_dns() {
 			output=$(for i in $(echo "$mosdns_dnsserver" | sed "s/,/ /g"); do
 				dnsserver="${i%:*}"
 				dnsserver="${i##*/}"
-				if [ "$HAS_IPSET" -eq 1 ]; then
+				if [ "$USE_TABLES" = "iptables" ]; then
 					add_dns_into_ipset "$run_mode" "$dnsserver"
 				fi
 				echo "            - addr: $i"
@@ -1295,29 +1346,39 @@ start_dns() {
 			# 遍历每个 DNS 服务器
 			IFS=','  # 设置分隔符为逗号
 			for chinadns_ng_server in $dnsserver; do
+				chinadns_ng_server="$(echo "$chinadns_ng_server" | sed 's/[[:space:]]//g')"
+				[ -z "$chinadns_ng_server" ] && continue
 				# 处理单个服务器地址
 				chinadns_ng_ip="${chinadns_ng_server%%:*}"
 				chinadns_ng_port="${chinadns_ng_server##*:}"
+
+				# 如果没有显式指定端口，根据协议填入默认端口
 				[ "$chinadns_ng_ip" = "$chinadns_ng_port" ] && chinadns_ng_port="53"
-				chinadns_ng_tls_port="853"
+				# TLS 协议强制使用 853 端口（DoT 标准端口），忽略用户指定的端口
+				[ "$chinadns_ng_proto" = "tls" ] && chinadns_ng_port="853"
 				# 根据协议类型格式化服务器地址
 				case "$chinadns_ng_proto" in
 					"none")
-            					chinadns_ng_server="${chinadns_ng_ip}#${chinadns_ng_port}"
-            					;;
+						chinadns_ng_server="${chinadns_ng_ip}#${chinadns_ng_port}"
+						;;
 					"tls")
-            					chinadns_ng_server="${chinadns_ng_proto}://${chinadns_ng_ip}#${chinadns_ng_tls_port}"
-            					;;
+						chinadns_ng_server="${chinadns_ng_proto}://${chinadns_ng_ip}#${chinadns_ng_port}"
+						;;
 					*)
-            					chinadns_ng_server="${chinadns_ng_proto}://${chinadns_ng_ip}#${chinadns_ng_port}"
-            					;;
+						chinadns_ng_server="${chinadns_ng_proto}://${chinadns_ng_ip}#${chinadns_ng_port}"
+						;;
 				esac
 				# 添加到参数列表
 				chinadns_ng_dns="${chinadns_ng_dns} -t ${chinadns_ng_server}"
 			done
 			unset IFS  # 恢复默认分隔符
+
 			dnsserver="$chinadns_ng_dns"
-			ln_start_bin "$(first_type chinadns-ng)" chinadns-ng -b 127.0.0.1 -l "$tmp_dns_port" -l "$dns_port" -p 3 -d gfw "$dnsserver" -N --filter-qtype 64,65 -f -r --cache 4096 --cache-stale 86400 --cache-refresh 20
+			# $dnsserver holds a list of "-t <server>" arguments built above, so it
+			# has to stay unquoted and word-split into separate arguments
+			# shellcheck disable=SC2086
+			ln_start_bin "$(first_type chinadns-ng)" chinadns-ng -b 127.0.0.1 -l "$dns_port" -p 3 -d gfw $dnsserver -N --filter-qtype 64,65 -f -r --cache 4096 --cache-stale 86400 --cache-refresh 20 --verdict-cache 4096
+			ln_start_bin "$(first_type chinadns-ng)" chinadns-ng -b 127.0.0.1 -l "$tmp_dns_port" -p 3 -d gfw $dnsserver -N --filter-qtype 64,65 -f -r --cache 4096 --cache-stale 86400 --cache-refresh 20 --verdict-cache 4096
 			echolog "ChinaDNS-NG query and cache Started!"
 			pdnsd_enable_flag=6
 			;;
@@ -1332,8 +1393,30 @@ start_dns() {
 				"wan_114") chinadns="$wandns,114.114.114.114" ;;
 				esac
 
-				filtered_chinadns=$(echo "$chinadns" | sed 's/:/#/')
-				ln_start_bin "$(first_type chinadns-ng)" chinadns-ng -l "$china_dns_port" -4 china -p 3 -c "$filtered_chinadns" -t "127.0.0.1#$dns_port" -N -f -r
+				filtered_chinadns=""
+				IFS=','
+				for chinadns_ip in $chinadns; do
+					# 过滤可能的前后空白字符
+					chinadns_ip="$(echo "$chinadns_ip" | sed 's/[[:space:]]//g')"
+					[ -z "$chinadns_ip" ] && continue
+
+					# 将 IP:PORT 格式转换为 IP#PORT（若无端口默认使用 53）
+					if echo "$chinadns_ip" | grep -q "#"; then
+						: # 已是 IP#PORT 格式，无需更改
+					elif echo "$chinadns_ip" | grep -qE ':[0-9]+$'; then
+						chinadns_ip="$(echo "$chinadns_ip" | sed -E 's/:([0-9]+)$/#\1/')"
+					else
+						chinadns_ip="${chinadns_ip}#53"
+					fi
+					filtered_chinadns="${filtered_chinadns} -c ${chinadns_ip}"
+				done
+				unset IFS
+
+				if [ "$USE_TABLES" = "iptables" ]; then
+					ln_start_bin "$(first_type chinadns-ng)" chinadns-ng -l "$china_dns_port" -4 china -p 3 $filtered_chinadns -t "127.0.0.1#$dns_port" -N -f -r --cache 4096 --cache-stale 86400 --cache-refresh 20 --verdict-cache 4096
+				elif [ "$USE_TABLES" = "nftables" ]; then
+					ln_start_bin "$(first_type chinadns-ng)" chinadns-ng -l "$china_dns_port" -4 inet@ss_spec@china -p 3 $filtered_chinadns -t "127.0.0.1#$dns_port" -N -f -r --cache 4096 --cache-stale 86400 --cache-refresh 20 --verdict-cache 4096
+				fi
 
 				cat <<-EOF >> "$TMP_DNSMASQ_PATH/chinadns_fixed_server.conf"
 					no-poll
@@ -1466,21 +1549,21 @@ generate_xray_config() {
 			fi
 			;;
 	esac
-	
-	cat > "$config_file" << EOF
-{
-	"log": {
-		"loglevel": "warning"
-	},
-	"inbounds": [$inbound_json],
-	"outbounds": [
+
+	cat <<-EOF >"$config_file"
 		{
-			"protocol": "freedom",
-			"settings": {}
+			"log": {
+				"loglevel": "warning"
+			},
+			"inbounds": [$inbound_json],
+			"outbounds": [
+				{
+					"protocol": "freedom",
+					"settings": {}
+				}
+			]
 		}
-	]
-}
-EOF
+	EOF
 	return 0
 }
 
@@ -2555,7 +2638,6 @@ start_server() {
 		local listenip
 		local username
 		local password
-		local auth_opts
 		local enable_mihomo
 		local mihomo_server_started
 		local xray_bin
@@ -2622,16 +2704,23 @@ start_server() {
 			fi
 			;;
 		socks5)
-			listenip='-i 0.0.0.0'
-			[ -e /proc/sys/net/ipv6 ] && listenip='-i ::'
+			listenip='0.0.0.0'
+			[ -e /proc/sys/net/ipv6 ] && listenip='::'
 			username=$(uci_get_by_name "$1" username)
 			password=$(uci_get_by_name "$1" password)
-			auth_opts=""
-			if [ -n "$username" ]; then
-				auth_opts="-u $username"
-				[ -n "$password" ] && auth_opts="$auth_opts -P $password"
+			if { [ -n "$username" ] && [ -z "$password" ]; } ||
+				{ [ -z "$username" ] && [ -n "$password" ]; }; then
+				echolog "Server:Socks5 Server$server_count 用户名和密码必须同时配置。"
+				return 1
 			fi
-			ln_start_bin "$(first_type microsocks)" microsocks "$listenip" -p "$(uci_get_by_name "$1" server_port)" -1 "$auth_opts" ssr-server$server_count
+			if [ -n "$username" ]; then
+				ln_start_bin "$(first_type microsocks)" "ssr-server-$server_count" \
+					-i "$listenip" -p "$(uci_get_by_name "$1" server_port)" \
+					-1 -u "$username" -P "$password"
+			else
+				ln_start_bin "$(first_type microsocks)" "ssr-server-$server_count" \
+					-i "$listenip" -p "$(uci_get_by_name "$1" server_port)"
+			fi
 			echolog "Server:Socks5 Server$server_count Started!"
 			;;
 		vmess|vless|trojan|shadowsocks)
@@ -2849,11 +2938,17 @@ start_rules() {
 	local ac_ips
 	local custom_ports
 	local proxyport
+	local enable_fake_ip
 
 	server=$(get_host_ip "$GLOBAL_SERVER")
 	local_port=$(get_default_node_local_port)
 	lan_ac_ips=$(uci_get_by_type access_control lan_ac_ips)
 	lan_ac_mode=$(uci_get_by_type access_control lan_ac_mode)
+
+	enable_fake_ip=$(uci_get_by_type server_subscribe enable_fake_ip "")
+	if [ -z "$enable_fake_ip" ]; then
+		enable_fake_ip="0"
+	fi
 
 	if [ "$kcp_enable_flag" = "0" ] && [ "$redir_udp" = "1" ]; then
 		udp_server=$(get_host_ip "$UDP_RELAY_SERVER")
@@ -2899,26 +2994,27 @@ start_rules() {
 		fi
 	elif [ "$USE_TABLES" = "iptables" ]; then
 		ARG_A=""
-		fi
-		/usr/share/shadowsocksr/gfw2ipset.sh
-		/usr/bin/ssr-rules \
-			-s "$server" \
-			-l "$local_port" \
-			-S "$udp_server" \
-			-L "$udp_local_port" \
-			-a "$ac_ips" \
-			-i "/etc/ssrplus/china_ssr.txt" \
-			-b "$(uci_get_by_type access_control wan_bp_ips)" \
-			-w "$(uci_get_by_type access_control wan_fw_ips)" \
-			-B "$(uci_get_by_type access_control lan_bp_ips)" \
-			-p "$(uci_get_by_type access_control lan_fp_ips)" \
-			-G "$(uci_get_by_type access_control lan_gm_ips)" \
-			-m "$(uci_get_by_type access_control Interface)" \
-			-D "$proxyport" \
-			"$(get_arg_out)" "$(gfwmode)" "$ARG_UDP" "$ARG_UDP_RULES" "$ARG_A"
+	fi
+	/usr/share/shadowsocksr/gfw2ipset.sh
+	/usr/bin/ssr-rules \
+		-s "$server" \
+		-l "$local_port" \
+		-S "$udp_server" \
+		-L "$udp_local_port" \
+		-a "$ac_ips" \
+		-i "/etc/ssrplus/china_ssr.txt" \
+		-b "$(uci_get_by_type access_control wan_bp_ips)" \
+		-w "$(uci_get_by_type access_control wan_fw_ips)" \
+		-B "$(uci_get_by_type access_control lan_bp_ips)" \
+		-p "$(uci_get_by_type access_control lan_fp_ips)" \
+		-G "$(uci_get_by_type access_control lan_gm_ips)" \
+		-m "$(uci_get_by_type access_control Interface)" \
+		-D "$proxyport" \
+		-E "$enable_fake_ip" \
+		"$(get_arg_out)" "$(gfwmode)" "$ARG_UDP" "$ARG_UDP_RULES" "$ARG_A"
 
-		return $?
-	}
+	return $?
+}
 
 start() {
 	local run_mode
@@ -2944,7 +3040,7 @@ start() {
 		start_rules
 		start_dns
 		# Restore ipsets after rules creation
-		if [ "$HAS_IPSET" -eq 1 ]; then
+		if [ "$USE_TABLES" = "iptables" ]; then
 			for setname in gfwlist china blacklist whitelist; do
 				[ "$setname" = "gfwlist" ] && [ "$run_mode" != "gfw" ] && continue
 				if [ -f "/tmp/ssrplus_save/${setname}.save" ]; then
@@ -3037,7 +3133,7 @@ stop() {
 	set_lock
 	check_run_environment
 	# Save ipsets before stopping to persist transparent proxy state
-	if [ "$HAS_IPSET" -eq 1 ]; then
+	if [ "$USE_TABLES" = "iptables" ]; then
 		mkdir -p /tmp/ssrplus_save
 		run_mode="$(uci_get_by_type global run_mode)"
 		if [ "$run_mode" = "gfw" ]; then

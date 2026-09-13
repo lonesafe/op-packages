@@ -18,8 +18,8 @@ do
 
 	if [ "$CFG_UPDATE_INT" -ne 0 ]; then
 
-		restart_week_mode=$(config_t_get global_delay restart_week_mode)
-		restart_interval_mode=$(config_t_get global_delay restart_interval_mode)
+		restart_week_mode=$(config_n_get @global_delay[0] restart_week_mode)
+		restart_interval_mode=$(config_n_get @global_delay[0] restart_interval_mode)
 		restart_interval_mode=$(expr "$restart_interval_mode" \* 60)
 		if [ -n "$restart_week_mode" ]; then
 			[ "$restart_week_mode" = "8" ] && {
@@ -27,8 +27,8 @@ do
 			}
 		fi
 
-		rules_update_week_mode=$(config_t_get global_rules update_week_mode)
-		rules_update_interval_mode=$(config_t_get global_rules update_interval_mode)
+		rules_update_week_mode=$(config_n_get @global_rules[0] update_week_mode)
+		rules_update_interval_mode=$(config_n_get @global_rules[0] update_interval_mode)
 		rules_update_interval_mode=$(expr "$rules_update_interval_mode" \* 60)
 		if [ -n "$rules_update_week_mode" ]; then
 			[ "$rules_update_week_mode" = "8" ] && {
@@ -40,10 +40,11 @@ do
 		mkdir -p $TMP_SUB_PATH
 		for item in $(uci show ${CONFIG} | grep "=subscribe_list" | cut -d '.' -sf 2 | cut -d '=' -sf 1); do
 			sub_update_week_mode=$(config_n_get $item update_week_mode)
-			if [ -n "$sub_update_week_mode" ]; then
-				remark=$(config_n_get $item remark)
+			if [ -n "$sub_update_week_mode" ] && [ "$sub_update_week_mode" = "8" ]; then
 				sub_update_interval_mode=$(config_n_get $item update_interval_mode)
-				echo "$item" >> $TMP_SUB_PATH/${sub_update_week_mode}_${sub_update_interval_mode}
+				[ -n "$sub_update_interval_mode" ] && {
+					echo "$item" >> $TMP_SUB_PATH/${sub_update_week_mode}_${sub_update_interval_mode}
+				}
 			fi
 		done
 
@@ -56,7 +57,6 @@ do
 				[ "$sub_update_week_mode" = "8" ] && {
 					[ "$(expr "$CFG_UPDATE_INT" % "$sub_update_interval_mode")" -eq 0 ] && { lua $APP_PATH/subscribe.lua start $cfgids cron > /dev/null 2>&1 & }
 				}
-
 			done
 			rm -rf $TMP_SUB_PATH
 		}

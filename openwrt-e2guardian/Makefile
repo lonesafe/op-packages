@@ -2,7 +2,7 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=e2guardian
 PKG_VERSION:=5.5.9r
-PKG_RELEASE:=2
+PKG_RELEASE:=3
 
 PKG_LICENSE:=GPL-2.0
 PKG_MAINTAINER:=Douglas Orend <doug.orend2@gmail.com>
@@ -10,7 +10,7 @@ PKG_MAINTAINER:=Douglas Orend <doug.orend2@gmail.com>
 PKG_SOURCE_PROTO:=git
 PKG_SOURCE_URL:=https://github.com/e2guardian/e2guardian/
 PKG_SOURCE_VERSION:=e9d50c8852891952c7750aa03fcf086267217a7f
-PKG_MIRROR_HASH:=skip
+PKG_MIRROR_HASH:=4dd1bdb9f4cd9032db91430d9852c8e6504bf9dd40ad3c80f2b97f8918970cca
 
 include $(INCLUDE_DIR)/uclibc++.mk
 include $(INCLUDE_DIR)/package.mk

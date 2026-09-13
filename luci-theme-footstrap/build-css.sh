@@ -3,14 +3,14 @@
 #
 #   ./build-css.sh [outfile] [--dev]
 #
-# Dir order = layer order (styles/, base/, theme/, pages/); filename order = source
-# order within a dir. A later layer beats an earlier one whatever the specificity, so
-# nothing needs !important to override base (declared in styles/00-header.css).
+# Directory order is layer order (styles/, base/, theme/, pages/); filename order is source order
+# within a directory. A later layer beats an earlier one whatever the specificity, so nothing needs
+# !important to override base.
 #
-# Minified unless --dev: ~468 KB of source -> ~136 KB (-71%). uhttpd serves CSS with NO
-# gzip, so every byte is a wire byte. Comments and whitespace go; a selector or a
-# declaration is never rewritten, which is why LuCI's csstidy stays off (it mangles
-# :has()/color-mix()). Needs only cat/awk, so an OpenWrt buildbot can run it.
+# Minified unless --dev: ~468 KB of source to ~136 KB. uhttpd serves CSS with NO gzip, so every byte
+# is a wire byte. Comments and whitespace go; a selector or a declaration is never rewritten, which
+# is why LuCI's csstidy stays off (it mangles :has() and color-mix()). Needs only cat and awk, so an
+# OpenWrt buildbot can run it.
 set -e
 
 D="$(cd "$(dirname "$0")" && pwd)"
@@ -33,21 +33,59 @@ done
 
 TMP="$OUT.tmp.$$"
 # $TMP.min too: an awk failure used to leave it behind next to the real output.
-trap 'rm -f "$TMP" "$TMP.min"' EXIT
+trap 'rm -f "$TMP" "$TMP.min" "$TMP.layer"' EXIT
 mkdir -p "$(dirname "$OUT")"
 
-# glob expands in filename order
-cat "$D"/styles/*.css \
-    "$D"/styles/base/*.css \
-    "$D"/styles/theme/*.css \
-    "$D"/styles/pages/*.css > "$TMP"
-
-# Strip /* ... */, keep /*! ... */ (the licence banner), drop indentation/blank lines.
+# One `@layer X{` per LAYER, not one per FILE. Every source file carries its own wrapper so it can
+# be read and edited alone; concatenated, that is 38 copies of the same six-to-eleven bytes, 554 of
+# them, plus two files that are all comment and emit nothing but `@layer page{}`.
 #
-# STRING-AWARE: the old scanner just hunted for the next "/*", so `content: "/*"` would
-# open a comment and eat every rule up to the next "*/". Its only guard was the brace
-# count below, and two such literals balance each other — rules could vanish in silence.
-# Quoted data-URIs run through here on every build.
+# The wrapper now comes from the DIRECTORY, so a file filed under the wrong layer would be silently
+# re-layered instead of just being wrong — hence the check that each file opens with the layer its
+# directory means. A file with no wrapper at all (00-header.css: the banner and the layer-order
+# statement) is copied through, and must come before the wrapped ones or it would land inside the
+# block.
+emit_layer() {
+	layer="$1"; shift
+	body="$TMP.layer"
+	: > "$body"
+	for f in "$@"; do
+		if head -1 "$f" | grep -q '^@layer '; then
+			head -1 "$f" | grep -q "^@layer $layer {\$" || {
+				echo "build-css: $f is in a $layer directory but does not open with '@layer $layer {'" >&2
+				rm -f "$body"; exit 1; }
+			# the file's own wrapper: its first line, and its last line, which is that wrapper's `}`
+			sed '1d;$d' "$f" >> "$body"
+		elif [ -s "$body" ]; then
+			echo "build-css: $f has no @layer wrapper but follows one that does — it would be" >&2
+			echo "build-css: swallowed into the $layer block instead of staying above it." >&2
+			rm -f "$body"; exit 1
+		else
+			cat "$f"
+		fi
+	done
+	if [ -s "$body" ]; then
+		printf '@layer %s {\n' "$layer"
+		cat "$body"
+		printf '}\n'
+	fi
+	rm -f "$body"
+}
+
+# glob expands in filename order
+{
+	emit_layer tokens "$D"/styles/*.css
+	emit_layer base   "$D"/styles/base/*.css
+	emit_layer theme  "$D"/styles/theme/*.css
+	emit_layer page   "$D"/styles/pages/*.css
+} > "$TMP"
+
+# Strip /* … */, keep /*! … */ (the licence banner), drop indentation and blank lines.
+#
+# String-aware: a scanner that just hunts for the next "/*" lets `content: "/*"` open a comment and
+# eat every rule up to the next "*/", with only the brace count below as a guard — and two such
+# literals balance each other, so rules can vanish in silence. Quoted data-URIs run through here on
+# every build.
 strip_comments() {
 	awk '
 		BEGIN { inc = 0; q = "" }
@@ -82,23 +120,20 @@ strip_comments() {
 
 # Squeeze the whitespace CSS ignores — wire AND flash bytes, since uhttpd does not compress.
 #
-# REMOVED (~9.5 KB): the space after `:`, the spaces around `{ } ; ,`, the last `;` of a block,
-# the newline after every declaration (one line per RULE). lightningcss would save ~13 KB, but
-# its extra 3.5 KB comes from rewriting colours and merging rules — transforms that can change
-# behaviour. These cannot.
+# Removed (~9.5 KB): the space after `:`, the spaces around `{ } ; ,`, the last `;` of a block, the
+# newline after every declaration. lightningcss would save ~13 KB, but its extra 3.5 KB comes from
+# rewriting colours and merging rules — transforms that can change behaviour. These cannot.
 #
-# LEFT ALONE, each for a reason:
-#   - the single space between selectors: `.a .b` is a DESCENDANT combinator, `.a.b` is not.
-#     Whitespace runs collapse to one space; that one stays.
-#   - spaces inside calc(): required around `*` `/` and the `-` of `calc(100% - 8px)`.
-#   - the LINE BREAK inside a declaration — whitespace too. This line-oriented scanner used to
-#     join lines with nothing between them, so a wrapped calc() came out `…))- .004 …`; a `-`
-#     with no space BEFORE it is a parse error, so the declaration dropped, --fs-tint-c went
-#     undefined, --fs-bg became invalid at computed-value time and the canvas fell back to
-#     white — silently (export-tier.mjs caught it: contrast 1.5:1). A newline is now treated
-#     exactly like a space run.
-#   - `>` `+` `~` spaces: stripping them is safe but buys only ~200 bytes.
-#   - anything inside a string: every data-URI here is quoted and full of `:` `;` and spaces.
+# Left alone, each for a reason:
+#   - the single space between selectors: `.a .b` is a DESCENDANT combinator, `.a.b` is not;
+#   - spaces inside calc(): required around `*`, `/` and the `-` of `calc(100% - 8px)`;
+#   - the LINE BREAK inside a declaration, which is whitespace too — joining lines with nothing
+#     between them turns a wrapped calc() into `…))- .004 …`, and a `-` with no space before it is
+#     a parse error, so the declaration drops and the token it defined goes undefined, silently —
+#     --fs-bg then became invalid at computed-value time and the canvas fell back to white
+#     (export-tier.mjs caught it: contrast 1.5:1);
+#   - `>` `+` `~` spaces: stripping them is safe but buys only ~200 bytes;
+#   - anything inside a string: every data-URI here is quoted and full of `:`, `;` and spaces;
 #   - one newline after `}`, so the shipped file stays greppable.
 squeeze() {
 	awk '
@@ -138,9 +173,19 @@ squeeze() {
 					prev = (length(out) ? substr(out, length(out), 1) : lastc)
 					nxt  = (i <= n ? substr(line, i, 1) : "")
 					# drop it entirely next to a delimiter; otherwise it may be a combinator
-					if (prev == "" || prev == "{" || prev == "}" || prev == ";" || prev == "," || prev == ":")
+					#
+					# `>` is a delimiter too, and the only one that is itself a combinator: a
+					# space either side of it is decoration. 516 of them in the sheet, so it is
+					# 1,032 B — the file header used to guess "~200 bytes" for this whole pass.
+					# Safe because a `>` outside a string can only be the child combinator: the
+					# sheet has no media range syntax (`@media (width > 600px)`), and the 107
+					# `>` inside string literals never reach here, the scanner having copied them
+					# verbatim above. `~` and `+` are deliberately NOT joined: `[attr~=v]` and
+					# `calc(100% - 10px)` make them ambiguous without tracking bracket depth,
+					# and they are worth 14 B and 34 B.
+					if (prev == "" || prev == "{" || prev == "}" || prev == ";" || prev == "," || prev == ":" || prev == ">")
 						continue
-					if (nxt == "{" || nxt == "}" || nxt == ";" || nxt == "," || nxt == "")
+					if (nxt == "{" || nxt == "}" || nxt == ";" || nxt == "," || nxt == "" || nxt == ">")
 						continue
 					out = out " "; lastreal = " "
 					continue
@@ -175,14 +220,11 @@ squeeze() {
 
 # Fail loudly rather than let an unbalanced block ship.
 #
-# STRING-AWARE, for the same reason the comment stripper is: a brace inside a CSS STRING is not a
-# block. The counter used to gsub() over the raw line, so a perfectly valid rule made the build
-# REFUSE — measured, all three shapes: `content: ";}"`, `content: "{"`, and a data-URI carrying
-# `;}` (an inline <style> inside an SVG icon carries braces by construction). It fails closed, so
-# nothing was ever corrupted; what it costs is an afternoon spent looking for an imbalance that is
-# not there, on a message that names the file as broken. Nothing in the tree contains such a byte
-# today, which is exactly how this waited for whoever adds the first one — the same sentence
-# already written above the comment stripper, which was fixed and left this one behind.
+# String-aware, for the same reason the comment stripper is: a brace inside a CSS STRING is not a
+# block, so a counter that gsub()s over the raw line makes a perfectly valid rule fail the build.
+# Measured, all three shapes: `content: ";}"`, `content: "{"`, and a data-URI carrying `;}`. It
+# fails closed, so nothing is ever corrupted; what it costs is a hunt for an imbalance that is not
+# there.
 brace_count() {
 	awk '
 		BEGIN { q = "" }

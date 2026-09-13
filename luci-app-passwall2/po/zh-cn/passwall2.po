@@ -1418,6 +1418,12 @@ msgstr "本机监听"
 msgid "When selected, it can only be accessed localhost."
 msgstr "当勾选时，只能本机访问。"
 
+msgid "Firewall Allow"
+msgstr "允许通过防火墙"
+
+msgid "Source zone"
+msgstr "源区域"
+
 msgid "Accept LAN Access"
 msgstr "接受局域网访问"
 
@@ -2092,10 +2098,10 @@ msgid "Access Control:"
 msgstr "访问控制："
 
 msgid "Add node to the load balancer is directly connected to %s[%s]."
-msgstr "加入负载均衡的节点到%s[%s]直连完成。"
+msgstr "加入负载均衡节点IP到%s[%s]直连豁免(防回环)完成。"
 
 msgid "Add all %s nodes to %s[%s] direct connection complete."
-msgstr "加入所有%s节点到%s[%s]直连完成。"
+msgstr "加入所有%s节点服务器IP到%s[%s]直连豁免(防回环)完成。"
 
 msgid "Starting to load %s firewall rules..."
 msgstr "开始加载 %s 防火墙规则..."
@@ -2133,8 +2139,8 @@ msgstr "不代理所有 %s"
 msgid "Use the %s node [%s]"
 msgstr "使用 %s 节点[%s]"
 
-msgid "Using a node that is different from the global configuration, DNS has been forcibly redirected to a dedicated DNS server."
-msgstr "使用与全局配置不相同节点，已将DNS强制重定向到专用 DNS 服务器。"
+msgid "DNS will redirected to the dedicated DNS server [%s]."
+msgstr "DNS 将重定向到专用 DNS 服务器 [%s]。"
 
 msgid "Add direct DNS to %s: %s"
 msgstr "追加直连 DNS 到 %s： %s"
@@ -2400,6 +2406,9 @@ msgstr "Gecko 包大小（最小）"
 msgid "Gecko Packet Size (max)"
 msgstr "Gecko 包大小（最大）"
 
+msgid "Enable UPnP/NAT-PMP port mapping on your gateway to improve hole punching success."
+msgstr "在网关上启用 UPnP/NAT-PMP 端口映射以提升打洞成功率。"
+
 msgid "valid time (hh:mm)"
 msgstr "有效时间（hh:mm）"
 
@@ -2417,3 +2426,7 @@ msgstr "配置支持的密码套件列表。"
 
 msgid "This username already exists."
 msgstr "该用户名已存在。"
+
+msgid "Update Options"
+msgstr "更新选项"
+

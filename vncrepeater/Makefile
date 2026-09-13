@@ -9,14 +9,14 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=vncrepeater
 PKG_VERSION:=0.14
-PKG_RELEASE:=1
+PKG_RELEASE:=2
 PKG_MAINTAINER:=Jirka Spicak <robutek@gmail.com> 
 PKG_LICENSE:=GPL-2.0
 
 
 PKG_SOURCE:=repeater014.zip
 PKG_SOURCE_URL:=http://jtko.mbnet.fi/uvncrepeater
-PKG_HASH:=skip
+PKG_HASH:=79178e9baa9cac05f26e43f742933958707cb5c0632c51a5706b13922f3bb5b0
 
 PKG_BUILD_PARALLEL:=1
 

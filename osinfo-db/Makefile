@@ -4,11 +4,11 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=osinfo-db
 PKG_VERSION:=20251212
-PKG_RELEASE:=1
+PKG_RELEASE:=2
 
 PKG_SOURCE:=$(PKG_NAME)-$(PKG_VERSION).tar.xz
 PKG_SOURCE_URL:=https://releases.pagure.org/libosinfo/
-PKG_HASH:=skip
+PKG_HASH:=06379250c91306c98cb9726af44eae5909dfdd5449f90331e904ae1221d8d5e7
 
 PKG_MAINTAINER:=jjm2473 <jjm2473@gmail.com>
 PKG_LICENSE:=LGPL-2.0-or-later

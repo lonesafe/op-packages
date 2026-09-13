@@ -129,6 +129,16 @@
  */
 
 const startupConf = [
+	[form.Flag, 'enabled', _('Enable service'), null,
+	{
+		enabled: '1',
+		disabled: '0',
+		default: '0',
+		rmempty: false,
+		retain: true,
+		remove: writeFlagDisabled
+	}],
+
 	[form.Flag, 'stdout', _('Log stdout'), null,
 	{
 		enabled: '1',
@@ -1412,7 +1422,7 @@ return view.extend({
 				});
 			});
 
-			return E('div', { class: 'cbi-map' },
+			return E('div', {},
 				E('fieldset', { class: 'cbi-section' }, [
 					E('p', { id: 'service_status' }, _('Collecting data ...'))
 				])

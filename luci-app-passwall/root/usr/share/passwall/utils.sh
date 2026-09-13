@@ -15,6 +15,20 @@ TMP_ROUTE_PATH=${TMP_PATH}/route
 TMP_SCRIPT_FUNC_PATH=${TMP_PATH}/script_func
 RULES_PATH=/usr/share/${CONFIG}/rules
 
+IPv6_REGEX="([0-9a-fA-F]{1,4}:){7,7}[0-9a-fA-F]{1,4}|"
+IPv6_REGEX="${IPv6_REGEX}([0-9a-fA-F]{1,4}:){1,7}:|"
+IPv6_REGEX="${IPv6_REGEX}([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|"
+IPv6_REGEX="${IPv6_REGEX}([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|"
+IPv6_REGEX="${IPv6_REGEX}([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}|"
+IPv6_REGEX="${IPv6_REGEX}([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|"
+IPv6_REGEX="${IPv6_REGEX}([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|"
+IPv6_REGEX="${IPv6_REGEX}[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})|"
+IPv6_REGEX="${IPv6_REGEX}:((:[0-9a-fA-F]{1,4}){1,7}|:)|"
+IPv6_REGEX="${IPv6_REGEX}fe80:(:[0-9a-fA-F]{0,4}){0,4}%[0-9a-zA-Z]{1,}|"
+IPv6_REGEX="${IPv6_REGEX}::(ffff(:0{1,4}){0,1}:){0,1}((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])|"
+IPv6_REGEX="${IPv6_REGEX}([0-9a-fA-F]{1,4}:){1,4}:((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])"
+IPv4_REGEX="((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)"
+
 . /lib/functions/network.sh
 
 echolog() {
@@ -46,11 +60,6 @@ config_t_get() {
 	echo "${ret:=${3}}"
 }
 
-config_t_set() {
-	local index=${4:-0}
-	local ret=$(uci -q set "${CONFIG}.@${1}[${index}].${2}=${3}" 2>/dev/null)
-}
-
 first_type() {
 	[ "${1#/}" != "$1" ] && [ -x "$1" ] && echo "$1" && return
 	for p in "/bin/$1" "/usr/bin/$1" "${TMP_BIN_PATH:-/tmp}/$1"; do
@@ -70,9 +79,9 @@ get_geoip() {
 	local geoip_type_flag=""
 	local output_path="${geo_output_path}/geoip-${geoip_code}-$2"
 	[ ! -s "${output_path}" ] && {
-		local geoip_path="$(config_t_get global_rules v2ray_location_asset)"
+		local geoip_path="$(config_n_get @global_rules[0] v2ray_location_asset)"
 		geoip_path="${geoip_path%*/}/geoip.dat"
-		local bin="$(first_type $(config_t_get global_app geoview_file) geoview)"
+		local bin="$(first_type $(config_n_get @global_app[0] geoview_file) geoview)"
 		[ -n "$bin" ] && [ -s "$geoip_path" ] || { echo ""; return; }
 		case "$2" in
 			"ipv4") geoip_type_flag="-ipv6=false" ;;
@@ -90,12 +99,12 @@ get_host_ip() {
 	local isip=""
 	local ip=""
 	if [ "$1" = "ipv6" ]; then
-		isip=$(echo $host | grep -E "([A-Fa-f0-9]{1,4}::?){1,7}[A-Fa-f0-9]{1,4}")
+		isip=$(echo $host | grep -Eo "$IPv6_REGEX")
 		if [ -n "$isip" ]; then
 			ip=$(echo "$host" | tr -d '[]')
 		fi
 	else
-		isip=$(echo $host | grep -E "([0-9]{1,3}[\.]){3}[0-9]{1,3}")
+		isip=$(echo $host | grep -Eo "$IPv4_REGEX")
 		[ -n "$isip" ] && ip=$isip
 	fi
 	[ -z "$isip" ] && {
@@ -213,31 +222,9 @@ check_host() {
 	return 0
 }
 
-get_first_dns() {
-	local __hosts_val=${1}; shift 1
-	__first() {
-		[ -z "${2}" ] && return 0
-		echo "${2}#${3}"
-		return 1
-	}
-	hosts_foreach "${__hosts_val}" __first "$@"
-}
-
-get_last_dns() {
-	local __hosts_val=${1}; shift 1
-	local __first __last
-	__every() {
-		[ -z "${2}" ] && return 0
-		__last="${2}#${3}"
-		__first=${__first:-${__last}}
-	}
-	hosts_foreach "${__hosts_val}" __first "$@"
-	[ "${__first}" =  "${__last}" ] || echo "${__last}"
-}
-
 normalize_dns() {
 	local s="$1"
-	local addr port
+	local addr port="${2-}"
 	case "$s" in
 		\[*\]:*)
 			# [ip6]:port
@@ -259,18 +246,22 @@ normalize_dns() {
 			# [ip6]
 			addr="${s#\[}"
 			addr="${addr%\]}"
-			port=""
 		;;
 		*)
 			addr="$s"
-			port=""
 		;;
 	esac
-	if [ -n "$port" ]; then
-		echo "${addr}#${port}"
-	else
-		echo "$addr"
-	fi
+	[ -n "$port" ] && echo "${addr}#${port}" || echo "$addr"
+}
+
+format_dns() {
+	local dns="${1%%#*}"
+	local port="${1#*#}"
+	[ "$port" = "$1" ] && port="${2-53}"
+	case "$dns" in
+		*:*) echo "[$dns]:$port" ;;
+		*)   echo "$dns:$port" ;;
+	esac
 }
 
 check_port_exists() {
@@ -479,27 +470,23 @@ ln_run() {
 		echolog "  - 找不到 ${ln_name}，无法启动..."
 		return 1
 	}
-	[ "${output}" != "/dev/null" ] && [ -n "$(echo "${output}" | grep -E "default|SOCKS_")" ] && [ "${ln_name}" != "chinadns-ng" ] && {
-		local persist_log_path=$(config_t_get global persist_log_path)
-		local sys_log=$(config_t_get global sys_log "0")
+	[ "${output}" != "/dev/null" ] && [ -n "$(echo "${output}" | grep -E "default|socks_")" ] && [ "${ln_name}" != "chinadns-ng" ] && {
+		local persist_log_path=$(config_n_get @global[0] persist_log_path)
+		local sys_log=$(config_n_get @global[0] sys_log "0")
 	}
 	if [ -z "$persist_log_path" ] && [ "$sys_log" != "1" ]; then
 		${file_func:-echolog " - ${ln_name}"} "$@" >${output} 2>&1 &
 	else
-		case "$output" in
-			*TCP.log) local protocol="TCP" ;;
-			*UDP.log) local protocol="UDP" ;;
-		esac
 		if [ -n "${persist_log_path}" ]; then
 			mkdir -p ${persist_log_path}
-			local log_file=${persist_log_path}/passwall_${protocol}_${ln_name}_$(date '+%F').log
+			local log_file=${persist_log_path}/passwall_global_${ln_name}_$(date '+%F').log
 			echolog "记录到持久性日志文件：${log_file}"
 			${file_func:-echolog " - ${ln_name}"} "$@" >> ${log_file} 2>&1 &
 			sys_log=0
 		fi
 		if [ "${sys_log}" = "1" ]; then
-			echolog "记录 ${ln_name}_${protocol} 到系统日志"
-			${file_func:-echolog " - ${ln_name}"} "$@" 2>&1 | logger -t PASSWALL_${protocol}_${ln_name} &
+			echolog "记录 ${ln_name}_global 到系统日志"
+			${file_func:-echolog " - ${ln_name}"} "$@" 2>&1 | logger -t PASSWALL_global_${ln_name} &
 		fi
 	fi
 	[ "$NO_REC_PROCESS" = "1" ] && return

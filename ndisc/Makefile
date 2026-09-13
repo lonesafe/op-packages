@@ -9,11 +9,11 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=ndisc6
 PKG_VERSION:=1.0.2
-PKG_RELEASE:=1
+PKG_RELEASE:=2
 
 PKG_SOURCE:=$(PKG_NAME)-$(PKG_VERSION).tar.bz2
 PKG_SOURCE_URL:=http://www.remlab.net/files/ndisc6
-PKG_MD5SUM:=skip
+PKG_MD5SUM:=50cb4c19606cf6ff2b7388e71832f579
 
 PKG_INSTALL:=1
 

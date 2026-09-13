@@ -12,13 +12,13 @@ LUCI_DEPENDS:=@(x86_64||aarch64) +curl +tar +libuci-lua +mount-utils +luci-lib-t
 LUCI_EXTRA_DEPENDS:=luci-lib-taskd (>=1.0.19)
 LUCI_PKGARCH:=all
 
-PKG_VERSION:=0.2.0-r3
+PKG_VERSION:=0.2.1-r1
 # PKG_RELEASE MUST be empty for luci.mk
 PKG_RELEASE:=
 
 ISTORE_UI_VERSION:=0.2.0
 ISTORE_UI_RELEASE:=2
-PKG_HASH:=skip
+PKG_HASH:=9aec741aa5675347bc5a818acb285901bddf309af8ae402dd898336751de38be
 
 PKG_SOURCE_URL_FILE:=v$(ISTORE_UI_VERSION)-$(ISTORE_UI_RELEASE).tar.gz
 PKG_SOURCE:=istore-ui-$(PKG_SOURCE_URL_FILE)

@@ -10,11 +10,11 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=dnsforwarder
 PKG_VERSION:=6.6.2
-PKG_RELEASE:=1
+PKG_RELEASE:=2
 
 PKG_SOURCE:=$(PKG_NAME)-$(PKG_VERSION).tar.gz
 PKG_SOURCE_URL:=https://codeload.github.com/lifenjoiner/dnsforwarder/tar.gz/v$(PKG_VERSION)?
-PKG_HASH:=skip
+PKG_HASH:=aa46a4f9df6ebe0a57fe01390bee4f708f75254d9aecbcb416e50a53c63af541
 
 PKG_LICENSE:=GPL-3.0
 PKG_LICENSE_FILES:=LICENSE

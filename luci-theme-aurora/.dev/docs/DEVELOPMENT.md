@@ -1,3 +1,5 @@
+<h4 align="right"><strong>English</strong> | <a href="DEVELOPMENT_zh.md">简体中文</a></h4>
+
 # Development Guide
 
 This guide covers the complete development workflow for the Aurora theme, from environment setup to building production packages.
@@ -117,7 +119,7 @@ All rules use `@apply` with Tailwind utilities and CSS Nesting — no raw CSS pr
 
 ### On-Demand Third-Party Patches
 
-> Page-scoped JS patches must expose `window.aurora.patches[stem] = { mount, unmount }` (and mount themselves once at eval) so the client-side router can drive them across same-document navigations — see `router.md`.
+> Page-scoped JS patches must expose `window.luciPatches[stem] = { mount, unmount }` (and mount themselves once at eval) so the client-side router can drive them across same-document navigations — see `router.md`.
 
 Some third-party LuCI apps ship markup that doesn't adapt to the theme and needs a narrow compatibility override. Instead of bundling every such patch into `main.css` (which would ship them to **every** page), each patch is a standalone CSS file loaded **only on the page it targets**.
 

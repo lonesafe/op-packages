@@ -2,13 +2,13 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=mwgp
 PKG_VERSION:=2.1.7
-PKG_RELEASE:=2
+PKG_RELEASE:=3
 
 PKG_SOURCE_PROTO:=git
 PKG_SOURCE:=v$(PKG_VERSION).tar.gz
 PKG_SOURCE_URL:=https://github.com/apernet/mwgp
 PKG_SOURCE_VERSION:=bd3cbaa3b81f0b081c425de9ac15a54a6da5ef9a
-PKG_HASH:=skip
+PKG_HASH:=296f66a2f1c9ce09eff1a8cb31b81f2dc0cb86a17836da69d897acf55fda7718
 
 PKG_MAINTAINER:=Apernet
 PKG_LICENSE:=GPL-3.0

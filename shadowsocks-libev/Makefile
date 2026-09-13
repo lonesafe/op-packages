@@ -14,7 +14,7 @@ include $(TOPDIR)/rules.mk
 #
 PKG_NAME:=shadowsocks-libev
 PKG_VERSION:=3.3.5
-PKG_RELEASE:=4
+PKG_RELEASE:=5
 
 PKG_SOURCE_PROTO:=git
 PKG_SOURCE_URL:=https://github.com/shadowsocks/shadowsocks-libev.git
@@ -22,7 +22,7 @@ PKG_SOURCE_DATE:=2025-1-20
 PKG_SOURCE_VERSION:=9afa3cacf947f910be46b69fc5a7a1fdd02fd5e6
 PKG_SOURCE_SUBDIR:=$(PKG_NAME)-$(PKG_VERSION)
 PKG_SOURCE:=$(PKG_SOURCE_SUBDIR).tar.xz
-PKG_MIRROR_HASH:=skip
+PKG_MIRROR_HASH:=b3898ad0a557bc8b0bbb2f3888101d461944239b0b7d4d4c6f164d73694a4595
 
 PKG_MAINTAINER:=Yousong Zhou <yszhou4tech@gmail.com>
 

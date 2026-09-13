@@ -11,13 +11,19 @@ if not s1.fields["type"].default then
 	s1.fields["type"].default = type_name
 end
 
+if not s1.val["type"] then
+	s1.val["type"] = type_name
+end
+
 if s1.val["type"] and s1.val["type"] ~= type_name then
 	return
 end
 
-local s = NamedSection(m, arg[1], "server")
+local s = NamedSection(m, arg[1], "tmp_" .. s1.sectiontype)
+s.parent = s1
 s.type_name = type_name
 s.option_prefix = "xray_"
+api.set_type_cbi(s)
 
 local ss_method_list = {
 	"aes-128-gcm", "aes-256-gcm", "chacha20-poly1305", "xchacha20-poly1305", "2022-blake3-aes-128-gcm", "2022-blake3-aes-256-gcm", "2022-blake3-chacha20-poly1305"
@@ -40,13 +46,13 @@ o.validate = function(self, value)
 	if v then return v end
 	return nil, translate("Custom Config") .. " " .. translate("Must be JSON text!")
 end
-o.custom_cfgvalue = function(self, section, value)
+o.cfgvalue = function(self, section, value)
 	local config_str = m:get(section, "config_str")
 	if config_str then
 		return api.base64Decode(config_str)
 	end
 end
-o.custom_write = function(self, section, value)
+o.write = function(self, section, value)
 	m:set(section, "config_str", api.base64Encode(value) or "")
 end
 
@@ -59,13 +65,12 @@ o:value("shadowsocks", "Shadowsocks")
 o:value("trojan", "Trojan")
 o:value("hysteria2", "Hysteria2")
 o:value("wireguard", "WireGuard")
-o:value("dokodemo-door", "dokodemo-door")
+o:value("tunnel", "Tunnel")
 o:depends({ custom = false })
 
 o = s:option(Value, "port", translate("Listen Port"))
 o.datatype = "port"
 o:depends({ custom = false })
-
 
 o = s:option(DynamicList, "users", translate("User"))
 for i, v in ipairs(user_list) do
@@ -84,14 +89,14 @@ o = s:option(ListValue, "d_protocol", translate("Destination protocol"))
 o:value("tcp", "TCP")
 o:value("udp", "UDP")
 o:value("tcp,udp", "TCP,UDP")
-o:depends({ protocol = "dokodemo-door" })
+o:depends({ protocol = "tunnel" })
 
 o = s:option(Value, "d_address", translate("Destination address"))
-o:depends({ protocol = "dokodemo-door" })
+o:depends({ protocol = "tunnel" })
 
 o = s:option(Value, "d_port", translate("Destination port"))
 o.datatype = "port"
-o:depends({ protocol = "dokodemo-door" })
+o:depends({ protocol = "tunnel" })
 
 o = s:option(Value, "decryption", translate("Encrypt Method") .. " (decryption)")
 o.default = "none"
@@ -146,6 +151,10 @@ o = s:option(DynamicList, "hysteria2_realm_stun", translate("Realm STUN"))
 o.default = { "stun.sip.us:3478", "stun.nextcloud.com:3478", "global.stun.twilio.com:3478" }
 o:depends({ hysteria2_realms = "1" })
 
+o = s:option(Flag, "hysteria2_realm_upnp", translate("Enable") .. " UPnP/NAT-PMP", translate("Enable UPnP/NAT-PMP port mapping on your gateway to improve hole punching success."))
+o.default = "0"
+o:depends({ hysteria2_realms = "1" })
+
 o = s:option(ListValue, "hysteria2_obfs_type", translate("Obfs Type"))
 o:value("", translate("Disable"))
 o:value("salamander")
@@ -197,13 +206,18 @@ o.validate = function(self, value, t)
 end
 o:depends({ protocol = "vmess" })
 o:depends({ protocol = "vless" })
+o:depends({ protocol = "http" })
 o:depends({ protocol = "shadowsocks" })
 o:depends({ protocol = "trojan" })
 
 -- [[ REALITY部分 ]] --
 o = s:option(Flag, "reality", translate("REALITY"))
 o.default = 0
-o:depends({ tls = true })
+o:depends({ tls = true, transport = "raw" })
+o:depends({ tls = true, transport = "ws" })
+o:depends({ tls = true, transport = "grpc" })
+o:depends({ tls = true, transport = "httpupgrade" })
+o:depends({ tls = true, transport = "xhttp" })
 
 o = s:option(Value, "reality_private_key", translate("Private Key"))
 o:depends({ reality = true })
@@ -250,13 +264,13 @@ end
 -- [[ TLS部分 ]] --
 
 o = s:option(FileUpload, "tls_certificateFile", translate("Public key absolute path"), translate("as:") .. "/etc/ssl/fullchain.pem")
-o.default = m:get(s.section, "tls_certificateFile") or "/etc/config/ssl/" .. arg[1] .. ".pem"
-if o and o:formvalue(arg[1]) then o.default = o:formvalue(arg[1]) end
+o.default = m:get(s.section, "tls_certificateFile") or "/etc/config/ssl/" .. s.section .. ".pem"
+if o and o:formvalue(s.section) then o.default = o:formvalue(s.section) end
 o:depends({ tls = true, reality = false })
 o:depends({ protocol = "hysteria2"})
 o.validate = function(self, value, t)
 	if value and value ~= "" then
-		if not fs.access(value) then
+		if not api.fs.access(value) then
 			return nil, translate("Can't find this file!")
 		else
 			return value
@@ -266,13 +280,13 @@ o.validate = function(self, value, t)
 end
 
 o = s:option(FileUpload, "tls_keyFile", translate("Private key absolute path"), translate("as:") .. "/etc/ssl/private.key")
-o.default = m:get(s.section, "tls_keyFile") or "/etc/config/ssl/" .. arg[1] .. ".key"
-if o and o:formvalue(arg[1]) then o.default = o:formvalue(arg[1]) end
+o.default = m:get(s.section, "tls_keyFile") or "/etc/config/ssl/" .. s.section .. ".key"
+if o and o:formvalue(s.section) then o.default = o:formvalue(s.section) end
 o:depends({ tls = true, reality = false })
 o:depends({ protocol = "hysteria2"})
 o.validate = function(self, value, t)
 	if value and value ~= "" then
-		if not fs.access(value) then
+		if not api.fs.access(value) then
 			return nil, translate("Can't find this file!")
 		else
 			return value
@@ -389,20 +403,21 @@ o:depends({ use_finalmask = true })
 o.rows = 10
 o.wrap = "off"
 o.datatype = "json"
-o.custom_cfgvalue = function(self, section, value)
+o.cfgvalue = function(self, section, value)
 	local raw = m:get(section, "finalmask")
 	if raw then
 		return api.base64Decode(raw)
 	end
 end
-o.custom_write = function(self, section, value)
+o.write = function(self, section, value)
 	m:set(section, "finalmask", api.base64Encode(value) or "")
 end
 
 --[[acceptProxyProtocol]]
 o = s:option(Flag, "acceptProxyProtocol", translate("acceptProxyProtocol"), translate("Whether to receive PROXY protocol, when this node want to be fallback or forwarded by proxy, it must be enable, otherwise it cannot be used."))
 o.default = "0"
-o:depends({ custom = false })
+o:depends({ transport = "raw" })
+o:depends({ transport = "ws" })
 
 --[[Fast Open]]
 o = s:option(Flag, "tcp_fast_open", "TCP " .. translate("Fast Open"))
@@ -464,9 +479,17 @@ o = s:option(DummyValue, "gen_wireguard_key")
 o.template = m:template_path("/server/gen_wireguard_key")
 o:depends({ protocol = "wireguard" })
 
-o = s:option(Flag, "bind_local", translate("Bind Local"), translate("When selected, it can only be accessed localhost."))
+o = s:option(Flag, "firewall_allow", translate("Firewall Allow"))
 o.default = "0"
 o:depends({ custom = false })
+
+o = s:option(Value, "firewall_allow_src", translate("Source zone"))
+o.rmempty = false
+o.nocreate = true
+o.allowany = true
+o.default = "wan"
+o.template = "cbi/firewall_zonelist"
+o:depends({ custom = false, firewall_allow = true })
 
 o = s:option(Flag, "accept_lan", translate("Accept LAN Access"), translate("When selected, it can accessed lan , this will not be safe!"))
 o.default = "0"
@@ -533,4 +556,4 @@ o:value("warning")
 o:value("error")
 o:depends({ log = true })
 
-api.luci_types(s1, s)
+api.type_cbi_section(s1, s)

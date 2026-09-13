@@ -8,12 +8,12 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=grpcurl
-PKG_VERSION:=1.9.3
-PKG_RELEASE:=6
+PKG_VERSION:=1.9.4
+PKG_RELEASE:=7
 
 PKG_SOURCE:=v$(PKG_VERSION).tar.gz
 PKG_SOURCE_URL:=https://github.com/fullstorydev/grpcurl/archive/refs/tags/
-PKG_HASH:=skip
+PKG_HASH:=18b457f644baabeef0de350596dd8d23563586ee94a3ed3cb290063e097ab934
 
 PKG_LICENSE:=MIT
 PKG_LICENSE_FILES:=LICENSE

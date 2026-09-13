@@ -9,11 +9,11 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=net-snmp
 PKG_VERSION:=5.9.1
-PKG_RELEASE:=2
+PKG_RELEASE:=3
 
 PKG_SOURCE:=$(PKG_NAME)-$(PKG_VERSION).tar.gz
 PKG_SOURCE_URL:=@SF/net-snmp
-PKG_HASH:=skip
+PKG_HASH:=eb7fd4a44de6cddbffd9a92a85ad1309e5c1054fb9d5a7dd93079c8953f48c3f
 PKG_MAINTAINER:=Stijn Tintel <stijn@linux-ipv6.be>
 PKG_LICENSE:=MIT BSD-3-Clause-Clear
 PKG_CPE_ID:=cpe:/a:net-snmp:net-snmp
